@@ -7,22 +7,34 @@ const SAVE_DEBOUNCE_MS = 400
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-function buildWorkspace(projects: Project[], activeProjectId: string): Workspace {
+function buildWorkspace(
+  projects: Project[],
+  activeProjectId: string,
+  globalNotes: string,
+  notesPanelOpen: boolean
+): Workspace {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects,
-    activeProjectId
+    activeProjectId,
+    globalNotes,
+    notesPanelOpen
   }
 }
 
-function schedulePersist(projects: Project[], activeProjectId: string): void {
+function schedulePersist(
+  projects: Project[],
+  activeProjectId: string,
+  globalNotes: string,
+  notesPanelOpen: boolean
+): void {
   if (saveTimer !== null) {
     clearTimeout(saveTimer)
   }
 
   saveTimer = setTimeout(() => {
     saveTimer = null
-    const workspace = buildWorkspace(projects, activeProjectId)
+    const workspace = buildWorkspace(projects, activeProjectId, globalNotes, notesPanelOpen)
     void window.agentdeck.saveWorkspace(workspace)
   }, SAVE_DEBOUNCE_MS)
 }
@@ -50,6 +62,8 @@ export interface WorkspaceStoreState {
   projects: Project[]
   activeProjectId: string
   attentionByTerminalId: Record<string, AttentionState>
+  globalNotes: string
+  isNotesPanelOpen: boolean
   hydrate: (workspace: Workspace) => void
   addProject: (project: Project) => void
   removeProject: (projectId: string) => void
@@ -59,6 +73,9 @@ export interface WorkspaceStoreState {
   addTerminal: (projectId: string, terminal: Terminal) => void
   removeTerminal: (projectId: string, terminalId: string) => void
   setAttention: (terminalId: string, state: AttentionState) => void
+  setGlobalNotes: (notes: string) => void
+  setProjectNotes: (projectId: string, notes: string) => void
+  toggleNotesPanel: () => void
   getActiveProject: () => Project | undefined
   getAttention: (terminalId: string) => AttentionState
 }
@@ -67,12 +84,21 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   projects: [],
   activeProjectId: '',
   attentionByTerminalId: {},
+  globalNotes: '',
+  isNotesPanelOpen: false,
 
   hydrate: (workspace) => {
     set({
-      projects: sortProjectsPinnedFirst(workspace.projects),
+      projects: sortProjectsPinnedFirst(
+        workspace.projects.map((project) => ({
+          ...project,
+          terminals: []
+        }))
+      ),
       activeProjectId: workspace.activeProjectId,
-      attentionByTerminalId: {}
+      attentionByTerminalId: {},
+      globalNotes: workspace.globalNotes ?? '',
+      isNotesPanelOpen: workspace.notesPanelOpen ?? false
     })
   },
 
@@ -81,7 +107,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
       const projects = [...state.projects, project]
       const activeProjectId =
         state.activeProjectId === '' ? project.id : state.activeProjectId
-      schedulePersist(projects, activeProjectId)
+      schedulePersist(projects, activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects, activeProjectId }
     })
   },
@@ -103,7 +129,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
           )
         : state.attentionByTerminalId
 
-      schedulePersist(projects, activeProjectId)
+      schedulePersist(projects, activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects, activeProjectId, attentionByTerminalId }
     })
   },
@@ -130,7 +156,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         projects.push(toggled)
       }
 
-      schedulePersist(projects, state.activeProjectId)
+      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects }
     })
   },
@@ -141,7 +167,14 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         return state
       }
 
-      schedulePersist(state.projects, projectId)
+      const project = state.projects.find((item) => item.id === projectId)
+      if (project) {
+        void window.agentdeck.dismissAttentionForTerminals({
+          terminalIds: project.terminals.map((terminal) => terminal.id)
+        })
+      }
+
+      schedulePersist(state.projects, projectId, state.globalNotes, state.isNotesPanelOpen)
       return { activeProjectId: projectId }
     })
   },
@@ -174,7 +207,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
       projects.splice(fromIndex, 1)
       projects.splice(insertAt, 0, moved)
 
-      schedulePersist(projects, state.activeProjectId)
+      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects }
     })
   },
@@ -192,7 +225,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         }
       })
 
-      schedulePersist(projects, state.activeProjectId)
+      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects }
     })
   },
@@ -214,7 +247,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         terminalId
       ])
 
-      schedulePersist(projects, state.activeProjectId)
+      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
       return { projects, attentionByTerminalId }
     })
   },
@@ -231,6 +264,31 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
           [terminalId]: attentionState
         }
       }
+    })
+  },
+
+  setGlobalNotes: (notes) => {
+    set({ globalNotes: notes })
+    const { projects, activeProjectId, isNotesPanelOpen } = get()
+    schedulePersist(projects, activeProjectId, notes, isNotesPanelOpen)
+  },
+
+  setProjectNotes: (projectId, notes) => {
+    set((state) => {
+      const projects = state.projects.map((project) =>
+        project.id === projectId ? { ...project, notes } : project
+      )
+
+      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      return { projects }
+    })
+  },
+
+  toggleNotesPanel: () => {
+    set((state) => {
+      const isNotesPanelOpen = !state.isNotesPanelOpen
+      schedulePersist(state.projects, state.activeProjectId, state.globalNotes, isNotesPanelOpen)
+      return { isNotesPanelOpen }
     })
   },
 
