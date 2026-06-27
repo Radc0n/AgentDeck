@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FocusMode } from './components/FocusMode'
+import { NotesPanel } from './components/NotesPanel'
 import { SavedCommandsBar } from './components/SavedCommandsBar'
 import { StatusBar } from './components/StatusBar'
 import { TerminalGrid } from './components/TerminalGrid'
@@ -11,6 +12,7 @@ function App(): React.JSX.Element {
   useAttentionSync()
 
   const getActiveProject = useWorkspaceStore((state) => state.getActiveProject)
+  const isNotesPanelOpen = useWorkspaceStore((state) => state.isNotesPanelOpen)
 
   const [focusedTerminalId, setFocusedTerminalId] = useState<string | null>(null)
 
@@ -58,15 +60,21 @@ function App(): React.JSX.Element {
       <TopBar />
 
       <main className="app__main">
-        {focusedTerminal && activeProject ? (
-          <FocusMode
-            terminal={focusedTerminal}
-            onClose={() => void handleCloseFocusedTerminal()}
-            onExitFocus={() => setFocusedTerminalId(null)}
-          />
-        ) : (
-          <TerminalGrid onFocusTerminal={setFocusedTerminalId} />
-        )}
+        <div className="app__workspace">
+          {isNotesPanelOpen && <NotesPanel />}
+
+          <div className="app__content">
+            {focusedTerminal && activeProject ? (
+              <FocusMode
+                terminal={focusedTerminal}
+                onClose={() => void handleCloseFocusedTerminal()}
+                onExitFocus={() => setFocusedTerminalId(null)}
+              />
+            ) : (
+              <TerminalGrid onFocusTerminal={setFocusedTerminalId} />
+            )}
+          </div>
+        </div>
       </main>
 
       <SavedCommandsBar />

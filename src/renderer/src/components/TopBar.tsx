@@ -1,39 +1,10 @@
-import type { Project } from '../global'
-import { useWorkspaceStore } from '../store/workspace'
 import { AddTerminalButton } from './AddTerminalButton'
 import { ProjectTabs } from './ProjectTabs'
-
-function createProjectFromPath(path: string, name?: string): Project {
-  const segments = path.split(/[/\\]/)
-  const fallbackName = segments[segments.length - 1] || 'Proje'
-
-  return {
-    id: crypto.randomUUID(),
-    name: name ?? fallbackName,
-    path,
-    terminals: [],
-    savedCommands: []
-  }
-}
+import { useWorkspaceStore } from '../store/workspace'
 
 export function TopBar(): React.JSX.Element {
-  const addProject = useWorkspaceStore((state) => state.addProject)
-  const setActiveProject = useWorkspaceStore((state) => state.setActiveProject)
-
-  const handleAddProject = async (): Promise<void> => {
-    try {
-      const result = await window.agentdeck.addProject()
-      if (!result.path) {
-        return
-      }
-
-      const project = createProjectFromPath(result.path, result.name)
-      addProject(project)
-      setActiveProject(project.id)
-    } catch (error) {
-      console.error('Proje eklenemedi:', error)
-    }
-  }
+  const isNotesPanelOpen = useWorkspaceStore((state) => state.isNotesPanelOpen)
+  const toggleNotesPanel = useWorkspaceStore((state) => state.toggleNotesPanel)
 
   return (
     <header className="top-bar">
@@ -45,11 +16,32 @@ export function TopBar(): React.JSX.Element {
       <ProjectTabs />
 
       <div className="top-bar__actions">
-        <button type="button" className="btn btn--ghost" onClick={() => void handleAddProject()}>
-          + Proje
-        </button>
-
         <AddTerminalButton />
+
+        <button
+          type="button"
+          className={`top-bar__icon-btn${isNotesPanelOpen ? ' top-bar__icon-btn--active' : ''}`}
+          onClick={toggleNotesPanel}
+          title="Notlar"
+          aria-label="Notlar panelini aç/kapat"
+          aria-pressed={isNotesPanelOpen}
+        >
+          <svg
+            className="top-bar__icon"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="4" y="3" width="16" height="18" rx="2" />
+            <path d="M8 8h8M8 12h8M8 16h5" />
+          </svg>
+        </button>
 
         <button
           type="button"

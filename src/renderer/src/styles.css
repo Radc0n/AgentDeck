@@ -179,6 +179,12 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.top-bar__icon-btn--active {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-faint);
+  color: var(--primary);
+}
+
 .top-bar__icon {
   display: block;
   flex-shrink: 0;
