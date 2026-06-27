@@ -197,11 +197,53 @@ button:disabled {
 }
 
 .project-tabs--empty {
+  gap: 8px;
+}
+
+.project-tabs__empty-label {
   color: var(--on-surface-variant);
   opacity: 0.6;
   font-family: var(--font-mono);
   font-size: 13px;
   padding: 0 8px;
+  white-space: nowrap;
+}
+
+.project-tabs__add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 6px 8px 6px 12px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--on-surface-variant);
+  opacity: 0.55;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.project-tabs__add::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 14px;
+  background: var(--border-subtle);
+}
+
+.project-tabs__add:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--primary);
+  opacity: 1;
+}
+
+.project-tabs__add:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .project-tab {
@@ -327,9 +369,14 @@ button:disabled {
   transition: background 0.15s, color 0.15s;
 }
 
-.project-context-menu__item:hover {
+.project-context-menu__item:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
   color: var(--primary);
+}
+
+.project-context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .project-context-menu__item--danger {
@@ -571,6 +618,8 @@ button:disabled {
 .terminal-view__profile--shell,
 .terminal-view__profile--claude,
 .terminal-view__profile--cursor,
+.terminal-view__profile--codex,
+.terminal-view__profile--gemini,
 .terminal-view__profile--custom {
   background: rgba(255, 255, 255, 0.1);
   color: var(--primary);
@@ -620,10 +669,17 @@ button:disabled {
   flex: 1;
   min-height: 0;
   padding: 4px 6px;
+  display: flex;
 }
 
-.terminal-view__body .xterm,
-.terminal-view__terminal .xterm {
+.terminal-view__xterm-host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.terminal-view__xterm-host .xterm {
   height: 100%;
 }
 
@@ -807,4 +863,123 @@ button:disabled {
 
 .status-bar__mode-badge:disabled {
   opacity: 0.35;
+}
+
+/* ── Workspace layout (notes panel + content) ─────────────── */
+
+.app__workspace {
+  display: flex;
+  gap: var(--gutter);
+  height: 100%;
+  min-height: 0;
+}
+
+.app__content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Notes panel ──────────────────────────────────────────── */
+
+.notes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 280px;
+  flex-shrink: 0;
+  min-height: 0;
+  padding: var(--panel-padding);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.notes-panel__header {
+  display: flex;
+  align-items: center;
+}
+
+.notes-panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.notes-panel__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.notes-panel__tab {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.notes-panel__tab:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--primary);
+}
+
+.notes-panel__tab--active {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--primary);
+  box-shadow: inset 0 -2px 0 var(--primary-container);
+}
+
+.notes-panel__tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.notes-panel__textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 10px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.notes-panel__textarea:focus {
+  border-color: var(--border-subtle);
+}
+
+.notes-panel__textarea::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.notes-panel__empty {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 12px;
+  color: var(--on-surface-variant);
+  opacity: 0.5;
+  font-size: 13px;
 }
