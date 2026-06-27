@@ -54,7 +54,11 @@ describe('sessionStore', () => {
     saveWorkspace(workspace, userDataDir)
     const loaded = loadWorkspace(userDataDir)
 
-    expect(loaded).toEqual(workspace)
+    expect(loaded).toEqual({
+      ...workspace,
+      globalNotes: '',
+      notesPanelOpen: false
+    })
   })
 
   it('dosya yoksa boş varsayılan oturum döner', () => {
@@ -66,7 +70,9 @@ describe('sessionStore', () => {
     expect(loaded).toEqual({
       schemaVersion: 1,
       projects: [],
-      activeProjectId: ''
+      activeProjectId: '',
+      globalNotes: '',
+      notesPanelOpen: false
     })
     expect(existsSync(getWorkspaceFilePath(userDataDir))).toBe(false)
   })
@@ -83,9 +89,65 @@ describe('sessionStore', () => {
     expect(loaded).toEqual({
       schemaVersion: 1,
       projects: [],
-      activeProjectId: ''
+      activeProjectId: '',
+      globalNotes: '',
+      notesPanelOpen: false
     })
     expect(existsSync(`${filePath}.bak`)).toBe(true)
     expect(readFileSync(`${filePath}.bak`, 'utf8')).toBe('{ bozuk json')
+  })
+
+  it('notes / globalNotes / notesPanelOpen alanlarını round-trip korur', () => {
+    const userDataDir = createTempUserDataDir()
+    tempDirs.push(userDataDir)
+
+    const workspace: Workspace = {
+      schemaVersion: 1,
+      activeProjectId: 'proje-1',
+      globalNotes: 'tüm projeler için genel not',
+      notesPanelOpen: true,
+      projects: [
+        {
+          id: 'proje-1',
+          name: 'AgentDeck',
+          path: 'C:\\projeler\\agentdeck',
+          pinned: false,
+          terminals: [],
+          savedCommands: [],
+          notes: 'projeye özel not'
+        }
+      ]
+    }
+
+    saveWorkspace(workspace, userDataDir)
+    const loaded = loadWorkspace(userDataDir)
+
+    expect(loaded.globalNotes).toBe('tüm projeler için genel not')
+    expect(loaded.notesPanelOpen).toBe(true)
+    expect(loaded.projects[0].notes).toBe('projeye özel not')
+  })
+
+  it('not alanları olmayan eski workspace güvenli varsayılana düşer', () => {
+    const userDataDir = createTempUserDataDir()
+    tempDirs.push(userDataDir)
+
+    const filePath = getWorkspaceFilePath(userDataDir)
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        activeProjectId: '',
+        projects: [
+          { id: 'p', name: 'Eski', path: 'C:\\eski', terminals: [], savedCommands: [] }
+        ]
+      }),
+      'utf8'
+    )
+
+    const loaded = loadWorkspace(userDataDir)
+
+    expect(loaded.globalNotes).toBe('')
+    expect(loaded.notesPanelOpen).toBe(false)
+    expect(loaded.projects[0].notes).toBeUndefined()
   })
 })

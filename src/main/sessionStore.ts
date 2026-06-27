@@ -24,7 +24,14 @@ export function getDefaultUserDataDir(): string {
 }
 
 function isTerminalProfile(value: unknown): value is TerminalProfile {
-  return value === 'shell' || value === 'claude' || value === 'cursor' || value === 'custom'
+  return (
+    value === 'shell' ||
+    value === 'claude' ||
+    value === 'cursor' ||
+    value === 'codex' ||
+    value === 'gemini' ||
+    value === 'custom'
+  )
 }
 
 function normalizeSavedCommand(value: unknown): SavedCommand | null {
@@ -105,7 +112,7 @@ function normalizeProject(value: unknown): Project | null {
         .filter((command): command is SavedCommand => command !== null)
     : []
 
-  return {
+  const project: Project = {
     id: record.id,
     name: record.name,
     path: record.path,
@@ -113,6 +120,12 @@ function normalizeProject(value: unknown): Project | null {
     savedCommands,
     pinned: record.pinned === true
   }
+
+  if (typeof record.notes === 'string') {
+    project.notes = record.notes
+  }
+
+  return project
 }
 
 function migrateWorkspace(raw: unknown): Workspace {
@@ -138,10 +151,15 @@ function migrateWorkspace(raw: unknown): Workspace {
   const activeProjectId =
     typeof data.activeProjectId === 'string' ? data.activeProjectId : ''
 
+  const globalNotes = typeof data.globalNotes === 'string' ? data.globalNotes : ''
+  const notesPanelOpen = data.notesPanelOpen === true
+
   return {
     schemaVersion,
     projects,
-    activeProjectId
+    activeProjectId,
+    globalNotes,
+    notesPanelOpen
   }
 }
 

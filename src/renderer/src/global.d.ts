@@ -1,4 +1,4 @@
-export type TerminalProfile = 'shell' | 'claude' | 'cursor' | 'custom'
+export type TerminalProfile = 'shell' | 'claude' | 'cursor' | 'codex' | 'gemini' | 'custom'
 
 export type AttentionState = 'idle' | 'busy' | 'needsAttention'
 
@@ -24,12 +24,15 @@ export interface Project {
   terminals: Terminal[]
   savedCommands: SavedCommand[]
   pinned?: boolean
+  notes?: string
 }
 
 export interface Workspace {
   schemaVersion: number
   projects: Project[]
   activeProjectId: string
+  globalNotes?: string
+  notesPanelOpen?: boolean
 }
 
 export interface CreateTerminalRequest {
@@ -87,6 +90,10 @@ export interface AddProjectResult {
 
 export type Unsubscribe = () => void
 
+export interface AttentionDismissRequest {
+  terminalIds: string[]
+}
+
 export interface AgentDeckBridge {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResult>
   writeTerminal: (request: TerminalWriteRequest) => Promise<void>
@@ -96,10 +103,13 @@ export interface AgentDeckBridge {
   detachTerminal: (request: TerminalIdRequest) => Promise<void>
   reportTerminalFocus: (request: TerminalIdRequest) => Promise<void>
   reportTerminalUserInput: (request: TerminalIdRequest) => Promise<void>
+  resetAttentionSession: () => Promise<void>
+  dismissAttentionForTerminals: (request: AttentionDismissRequest) => Promise<void>
   loadWorkspace: () => Promise<Workspace>
   saveWorkspace: (workspace: Workspace) => Promise<void>
   addProject: () => Promise<AddProjectResult>
   checkProjectPath: (path: string) => Promise<boolean>
+  revealProjectInFolder: (path: string) => Promise<void>
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe
