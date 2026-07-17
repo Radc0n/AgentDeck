@@ -1,6 +1,11 @@
 import { create } from 'zustand'
-import type { AttentionState, Project, Terminal, Workspace } from '../global'
-import { clampProjectInsertionSlot, sortProjectsPinnedFirst } from '../projectOrder'
+import type { AttentionState, Notebook, Project, Terminal, Workspace } from '../global'
+import {
+  clampProjectInsertionSlot,
+  isMainProject,
+  partitionProjects,
+  sortAllProjects
+} from '../projectOrder'
 
 const CURRENT_SCHEMA_VERSION = 1
 const SAVE_DEBOUNCE_MS = 400
@@ -10,14 +15,14 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 function buildWorkspace(
   projects: Project[],
   activeProjectId: string,
-  globalNotes: string,
+  globalNotebooks: Notebook[],
   notesPanelOpen: boolean
 ): Workspace {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects,
     activeProjectId,
-    globalNotes,
+    globalNotebooks,
     notesPanelOpen
   }
 }
@@ -25,7 +30,7 @@ function buildWorkspace(
 function schedulePersist(
   projects: Project[],
   activeProjectId: string,
-  globalNotes: string,
+  globalNotebooks: Notebook[],
   notesPanelOpen: boolean
 ): void {
   if (saveTimer !== null) {
@@ -34,7 +39,12 @@ function schedulePersist(
 
   saveTimer = setTimeout(() => {
     saveTimer = null
-    const workspace = buildWorkspace(projects, activeProjectId, globalNotes, notesPanelOpen)
+    const workspace = buildWorkspace(
+      projects,
+      activeProjectId,
+      globalNotebooks,
+      notesPanelOpen
+    )
     void window.agentdeck.saveWorkspace(workspace)
   }, SAVE_DEBOUNCE_MS)
 }
@@ -58,23 +68,45 @@ function stripAttentionForTerminals(
   return next
 }
 
+function reindexNotebooks(notebooks: Notebook[]): Notebook[] {
+  return notebooks.map((notebook, order) =>
+    notebook.order === order ? notebook : { ...notebook, order }
+  )
+}
+
+function sortNotebooks(notebooks: Notebook[]): Notebook[] {
+  return [...notebooks].sort((a, b) => a.order - b.order)
+}
+
 export interface WorkspaceStoreState {
   projects: Project[]
   activeProjectId: string
   attentionByTerminalId: Record<string, AttentionState>
-  globalNotes: string
+  globalNotebooks: Notebook[]
   isNotesPanelOpen: boolean
   hydrate: (workspace: Workspace) => void
   addProject: (project: Project) => void
   removeProject: (projectId: string) => void
   togglePinProject: (projectId: string) => void
+  setProjectOther: (projectId: string, other: boolean) => void
   setActiveProject: (projectId: string) => void
-  reorderProjects: (fromIndex: number, toIndex: number) => void
+  /** Ana çubuktaki (Diğer dışındaki) indekslerle yeniden sıralar */
+  reorderMainProjects: (fromMainIndex: number, toMainSlot: number) => void
   addTerminal: (projectId: string, terminal: Terminal) => void
   removeTerminal: (projectId: string, terminalId: string) => void
   setAttention: (terminalId: string, state: AttentionState) => void
-  setGlobalNotes: (notes: string) => void
-  setProjectNotes: (projectId: string, notes: string) => void
+  createGlobalNotebook: (name: string) => string
+  createProjectNotebook: (projectId: string, name: string) => string
+  renameGlobalNotebook: (notebookId: string, name: string) => void
+  renameProjectNotebook: (projectId: string, notebookId: string, name: string) => void
+  deleteGlobalNotebook: (notebookId: string) => void
+  deleteProjectNotebook: (projectId: string, notebookId: string) => void
+  setGlobalNotebookContent: (notebookId: string, content: string) => void
+  setProjectNotebookContent: (
+    projectId: string,
+    notebookId: string,
+    content: string
+  ) => void
   toggleNotesPanel: () => void
   getActiveProject: () => Project | undefined
   getAttention: (terminalId: string) => AttentionState
@@ -84,30 +116,41 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   projects: [],
   activeProjectId: '',
   attentionByTerminalId: {},
-  globalNotes: '',
+  globalNotebooks: [],
   isNotesPanelOpen: false,
 
   hydrate: (workspace) => {
     set({
-      projects: sortProjectsPinnedFirst(
+      projects: sortAllProjects(
         workspace.projects.map((project) => ({
           ...project,
+          notebooks: sortNotebooks(project.notebooks ?? []),
           terminals: []
         }))
       ),
       activeProjectId: workspace.activeProjectId,
       attentionByTerminalId: {},
-      globalNotes: workspace.globalNotes ?? '',
+      globalNotebooks: sortNotebooks(workspace.globalNotebooks ?? []),
       isNotesPanelOpen: workspace.notesPanelOpen ?? false
     })
   },
 
   addProject: (project) => {
     set((state) => {
-      const projects = [...state.projects, project]
+      const nextProject: Project = {
+        ...project,
+        notebooks: project.notebooks ?? [],
+        other: project.other === true
+      }
+      const projects = sortAllProjects([...state.projects, nextProject])
       const activeProjectId =
         state.activeProjectId === '' ? project.id : state.activeProjectId
-      schedulePersist(projects, activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      schedulePersist(
+        projects,
+        activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects, activeProjectId }
     })
   },
@@ -129,7 +172,12 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
           )
         : state.attentionByTerminalId
 
-      schedulePersist(projects, activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      schedulePersist(
+        projects,
+        activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects, activeProjectId, attentionByTerminalId }
     })
   },
@@ -142,21 +190,53 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
       }
 
       const current = state.projects[index]
-      const toggled: Project = { ...current, pinned: !current.pinned }
-      const projects = state.projects.filter((project) => project.id !== projectId)
+      // Diğer rafındayken sabitlemek ana çubuğa taşır
+      const willPin = !current.pinned
+      const toggled: Project = {
+        ...current,
+        pinned: willPin,
+        other: willPin ? false : current.other
+      }
+      const without = state.projects.filter((project) => project.id !== projectId)
+      const projects = sortAllProjects([...without, toggled])
 
-      if (toggled.pinned) {
-        const firstUnpinnedIndex = projects.findIndex((project) => !project.pinned)
-        if (firstUnpinnedIndex === -1) {
-          projects.push(toggled)
-        } else {
-          projects.splice(firstUnpinnedIndex, 0, toggled)
-        }
-      } else {
-        projects.push(toggled)
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { projects }
+    })
+  },
+
+  setProjectOther: (projectId, other) => {
+    set((state) => {
+      const index = state.projects.findIndex((project) => project.id === projectId)
+      if (index === -1) {
+        return state
       }
 
-      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      const current = state.projects[index]
+      if (current.other === other) {
+        return state
+      }
+
+      const updated: Project = {
+        ...current,
+        other,
+        // Diğer'e giderken pin kalkar
+        pinned: other ? false : current.pinned
+      }
+      const without = state.projects.filter((project) => project.id !== projectId)
+      const projects = sortAllProjects([...without, updated])
+
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects }
     })
   },
@@ -174,40 +254,55 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         })
       }
 
-      schedulePersist(state.projects, projectId, state.globalNotes, state.isNotesPanelOpen)
+      schedulePersist(
+        state.projects,
+        projectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { activeProjectId: projectId }
     })
   },
 
-  reorderProjects: (fromIndex, toSlot) => {
+  reorderMainProjects: (fromMainIndex, toMainSlot) => {
     set((state) => {
-      const { length } = state.projects
+      const { main, other } = partitionProjects(state.projects)
       if (
-        fromIndex < 0 ||
-        fromIndex >= length ||
-        toSlot < 0 ||
-        toSlot > length
+        fromMainIndex < 0 ||
+        fromMainIndex >= main.length ||
+        toMainSlot < 0 ||
+        toMainSlot > main.length
       ) {
         return state
       }
 
-      const moved = state.projects[fromIndex]
-      const clampedSlot = clampProjectInsertionSlot(state.projects, moved.id, toSlot)
-
-      let insertAt = clampedSlot
-      if (fromIndex < clampedSlot) {
-        insertAt = clampedSlot - 1
-      }
-
-      if (fromIndex === insertAt) {
+      const moved = main[fromMainIndex]
+      if (!isMainProject(moved)) {
         return state
       }
 
-      const projects = [...state.projects]
-      projects.splice(fromIndex, 1)
-      projects.splice(insertAt, 0, moved)
+      const clampedSlot = clampProjectInsertionSlot(main, moved.id, toMainSlot)
 
-      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      let insertAt = clampedSlot
+      if (fromMainIndex < clampedSlot) {
+        insertAt = clampedSlot - 1
+      }
+
+      if (fromMainIndex === insertAt) {
+        return state
+      }
+
+      const nextMain = [...main]
+      nextMain.splice(fromMainIndex, 1)
+      nextMain.splice(insertAt, 0, moved)
+
+      const projects = [...nextMain, ...other]
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects }
     })
   },
@@ -225,7 +320,12 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         }
       })
 
-      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects }
     })
   },
@@ -247,7 +347,12 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         terminalId
       ])
 
-      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects, attentionByTerminalId }
     })
   },
@@ -267,19 +372,174 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
     })
   },
 
-  setGlobalNotes: (notes) => {
-    set({ globalNotes: notes })
-    const { projects, activeProjectId, isNotesPanelOpen } = get()
-    schedulePersist(projects, activeProjectId, notes, isNotesPanelOpen)
+  createGlobalNotebook: (name) => {
+    const id = crypto.randomUUID()
+    const trimmed = name.trim() || 'Yeni defter'
+    set((state) => {
+      const notebook: Notebook = {
+        id,
+        name: trimmed,
+        content: '',
+        order: state.globalNotebooks.length
+      }
+      const globalNotebooks = [...state.globalNotebooks, notebook]
+      schedulePersist(
+        state.projects,
+        state.activeProjectId,
+        globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { globalNotebooks }
+    })
+    return id
   },
 
-  setProjectNotes: (projectId, notes) => {
+  createProjectNotebook: (projectId, name) => {
+    const id = crypto.randomUUID()
+    const trimmed = name.trim() || 'Yeni defter'
     set((state) => {
-      const projects = state.projects.map((project) =>
-        project.id === projectId ? { ...project, notes } : project
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project
+        }
+        const notebooks = project.notebooks ?? []
+        const notebook: Notebook = {
+          id,
+          name: trimmed,
+          content: '',
+          order: notebooks.length
+        }
+        return { ...project, notebooks: [...notebooks, notebook] }
+      })
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
       )
+      return { projects }
+    })
+    return id
+  },
 
-      schedulePersist(projects, state.activeProjectId, state.globalNotes, state.isNotesPanelOpen)
+  renameGlobalNotebook: (notebookId, name) => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      return
+    }
+    set((state) => {
+      const globalNotebooks = state.globalNotebooks.map((notebook) =>
+        notebook.id === notebookId ? { ...notebook, name: trimmed } : notebook
+      )
+      schedulePersist(
+        state.projects,
+        state.activeProjectId,
+        globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { globalNotebooks }
+    })
+  },
+
+  renameProjectNotebook: (projectId, notebookId, name) => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      return
+    }
+    set((state) => {
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project
+        }
+        return {
+          ...project,
+          notebooks: (project.notebooks ?? []).map((notebook) =>
+            notebook.id === notebookId ? { ...notebook, name: trimmed } : notebook
+          )
+        }
+      })
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { projects }
+    })
+  },
+
+  deleteGlobalNotebook: (notebookId) => {
+    set((state) => {
+      const globalNotebooks = reindexNotebooks(
+        state.globalNotebooks.filter((notebook) => notebook.id !== notebookId)
+      )
+      schedulePersist(
+        state.projects,
+        state.activeProjectId,
+        globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { globalNotebooks }
+    })
+  },
+
+  deleteProjectNotebook: (projectId, notebookId) => {
+    set((state) => {
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project
+        }
+        return {
+          ...project,
+          notebooks: reindexNotebooks(
+            (project.notebooks ?? []).filter((notebook) => notebook.id !== notebookId)
+          )
+        }
+      })
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { projects }
+    })
+  },
+
+  setGlobalNotebookContent: (notebookId, content) => {
+    set((state) => {
+      const globalNotebooks = state.globalNotebooks.map((notebook) =>
+        notebook.id === notebookId ? { ...notebook, content } : notebook
+      )
+      schedulePersist(
+        state.projects,
+        state.activeProjectId,
+        globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { globalNotebooks }
+    })
+  },
+
+  setProjectNotebookContent: (projectId, notebookId, content) => {
+    set((state) => {
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project
+        }
+        return {
+          ...project,
+          notebooks: (project.notebooks ?? []).map((notebook) =>
+            notebook.id === notebookId ? { ...notebook, content } : notebook
+          )
+        }
+      })
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
       return { projects }
     })
   },
@@ -287,7 +547,12 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   toggleNotesPanel: () => {
     set((state) => {
       const isNotesPanelOpen = !state.isNotesPanelOpen
-      schedulePersist(state.projects, state.activeProjectId, state.globalNotes, isNotesPanelOpen)
+      schedulePersist(
+        state.projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        isNotesPanelOpen
+      )
       return { isNotesPanelOpen }
     })
   },

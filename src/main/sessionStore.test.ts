@@ -56,8 +56,13 @@ describe('sessionStore', () => {
 
     expect(loaded).toEqual({
       ...workspace,
-      globalNotes: '',
-      notesPanelOpen: false
+      globalNotebooks: [],
+      notesPanelOpen: false,
+      projects: workspace.projects.map((project) => ({
+        ...project,
+        other: false,
+        notebooks: []
+      }))
     })
   })
 
@@ -71,7 +76,7 @@ describe('sessionStore', () => {
       schemaVersion: 1,
       projects: [],
       activeProjectId: '',
-      globalNotes: '',
+      globalNotebooks: [],
       notesPanelOpen: false
     })
     expect(existsSync(getWorkspaceFilePath(userDataDir))).toBe(false)
@@ -90,14 +95,14 @@ describe('sessionStore', () => {
       schemaVersion: 1,
       projects: [],
       activeProjectId: '',
-      globalNotes: '',
+      globalNotebooks: [],
       notesPanelOpen: false
     })
     expect(existsSync(`${filePath}.bak`)).toBe(true)
     expect(readFileSync(`${filePath}.bak`, 'utf8')).toBe('{ bozuk json')
   })
 
-  it('notes / globalNotes / notesPanelOpen alanlarını round-trip korur', () => {
+  it('eski notes / globalNotes alanlarını defterlere migrate eder', () => {
     const userDataDir = createTempUserDataDir()
     tempDirs.push(userDataDir)
 
@@ -122,9 +127,44 @@ describe('sessionStore', () => {
     saveWorkspace(workspace, userDataDir)
     const loaded = loadWorkspace(userDataDir)
 
-    expect(loaded.globalNotes).toBe('tüm projeler için genel not')
     expect(loaded.notesPanelOpen).toBe(true)
-    expect(loaded.projects[0].notes).toBe('projeye özel not')
+    expect(loaded.globalNotebooks).toHaveLength(1)
+    expect(loaded.globalNotebooks?.[0].name).toBe('Notlar')
+    expect(loaded.globalNotebooks?.[0].content).toBe('tüm projeler için genel not')
+    expect(loaded.projects[0].notebooks).toHaveLength(1)
+    expect(loaded.projects[0].notebooks?.[0].content).toBe('projeye özel not')
+  })
+
+  it('notebooks alanını round-trip korur', () => {
+    const userDataDir = createTempUserDataDir()
+    tempDirs.push(userDataDir)
+
+    const workspace: Workspace = {
+      schemaVersion: 1,
+      activeProjectId: 'proje-1',
+      notesPanelOpen: true,
+      globalNotebooks: [
+        { id: 'gn1', name: 'Genel A', content: 'g', order: 0 },
+        { id: 'gn2', name: 'Genel B', content: 'h', order: 1 }
+      ],
+      projects: [
+        {
+          id: 'proje-1',
+          name: 'AgentDeck',
+          path: 'C:\\projeler\\agentdeck',
+          pinned: false,
+          terminals: [],
+          savedCommands: [],
+          notebooks: [{ id: 'pn1', name: 'Sprint', content: 'todo', order: 0 }]
+        }
+      ]
+    }
+
+    saveWorkspace(workspace, userDataDir)
+    const loaded = loadWorkspace(userDataDir)
+
+    expect(loaded.globalNotebooks).toEqual(workspace.globalNotebooks)
+    expect(loaded.projects[0].notebooks).toEqual(workspace.projects[0].notebooks)
   })
 
   it('not alanları olmayan eski workspace güvenli varsayılana düşer', () => {
@@ -146,8 +186,8 @@ describe('sessionStore', () => {
 
     const loaded = loadWorkspace(userDataDir)
 
-    expect(loaded.globalNotes).toBe('')
+    expect(loaded.globalNotebooks).toEqual([])
     expect(loaded.notesPanelOpen).toBe(false)
-    expect(loaded.projects[0].notes).toBeUndefined()
+    expect(loaded.projects[0].notebooks).toEqual([])
   })
 })

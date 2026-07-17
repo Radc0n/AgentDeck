@@ -131,7 +131,7 @@ npm test
 npm run dist
 ```
 
-Plan B sonrasi terminaller OS konsolunda acilir; `node-pty` / xterm bagimliligi kaldirildi. Genel kurulum hatasi alirsan `node_modules` klasorunu silip yeniden kur:
+Plan C: terminaller uygulamada gomulu (xterm + node-pty / ConPTY). Genel kurulum hatasi alirsan `node_modules` klasorunu silip yeniden kur:
 
 ```powershell
 Remove-Item -Recurse -Force node_modules

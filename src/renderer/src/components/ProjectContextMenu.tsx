@@ -7,6 +7,7 @@ interface ProjectContextMenuProps {
   y: number
   onClose: () => void
   onTogglePin: () => void
+  onToggleOther: () => void
   onRevealInFolder: () => void
   onRemove: () => void
   folderAccessible: boolean
@@ -18,6 +19,7 @@ export function ProjectContextMenu({
   y,
   onClose,
   onTogglePin,
+  onToggleOther,
   onRevealInFolder,
   onRemove,
   folderAccessible
@@ -68,6 +70,8 @@ export function ProjectContextMenu({
     menu.style.top = `${Math.max(padding, top)}px`
   }, [x, y])
 
+  const inOther = project.other === true
+
   return (
     <div
       ref={menuRef}
@@ -86,6 +90,17 @@ export function ProjectContextMenu({
         }}
       >
         {project.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="project-context-menu__item"
+        onClick={() => {
+          onToggleOther()
+          onClose()
+        }}
+      >
+        {inOther ? "Ana çubuğa al" : "Diğer'e taşı"}
       </button>
       <button
         type="button"

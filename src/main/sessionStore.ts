@@ -1,8 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import {
   CURRENT_SCHEMA_VERSION,
   createDefaultWorkspace,
+  type Notebook,
   type Project,
   type SavedCommand,
   type Terminal,
@@ -23,15 +25,22 @@ export function getDefaultUserDataDir(): string {
   return app.getPath('userData')
 }
 
-function isTerminalProfile(value: unknown): value is TerminalProfile {
-  return (
+function normalizeProfile(value: unknown): TerminalProfile | null {
+  if (value === 'gemini') {
+    return 'antigravity'
+  }
+  if (
+    value === 'grok' ||
     value === 'shell' ||
     value === 'claude' ||
     value === 'cursor' ||
     value === 'codex' ||
-    value === 'gemini' ||
+    value === 'antigravity' ||
     value === 'custom'
-  )
+  ) {
+    return value
+  }
+  return null
 }
 
 function normalizeSavedCommand(value: unknown): SavedCommand | null {
@@ -55,16 +64,72 @@ function normalizeSavedCommand(value: unknown): SavedCommand | null {
   }
 }
 
+function normalizeNotebook(value: unknown, fallbackOrder: number): Notebook | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  if (typeof record.id !== 'string' || typeof record.name !== 'string') {
+    return null
+  }
+
+  const content = typeof record.content === 'string' ? record.content : ''
+  const order =
+    typeof record.order === 'number' && Number.isFinite(record.order)
+      ? record.order
+      : fallbackOrder
+
+  return {
+    id: record.id,
+    name: record.name,
+    content,
+    order
+  }
+}
+
+function normalizeNotebooks(
+  value: unknown,
+  legacyNotes?: string
+): Notebook[] {
+  if (Array.isArray(value)) {
+    const notebooks = value
+      .map((item, index) => normalizeNotebook(item, index))
+      .filter((item): item is Notebook => item !== null)
+      .sort((a, b) => a.order - b.order)
+      .map((notebook, index) => ({ ...notebook, order: index }))
+
+    if (notebooks.length > 0) {
+      return notebooks
+    }
+  }
+
+  // Eski tek-metin modelinden bir defter oluştur.
+  if (typeof legacyNotes === 'string' && legacyNotes.length > 0) {
+    return [
+      {
+        id: randomUUID(),
+        name: 'Notlar',
+        content: legacyNotes,
+        order: 0
+      }
+    ]
+  }
+
+  return []
+}
+
 function normalizeTerminal(value: unknown): Terminal | null {
   if (!value || typeof value !== 'object') {
     return null
   }
 
   const record = value as Record<string, unknown>
+  const profile = normalizeProfile(record.profile)
   if (
     typeof record.id !== 'string' ||
     typeof record.name !== 'string' ||
-    !isTerminalProfile(record.profile) ||
+    profile === null ||
     typeof record.cwd !== 'string' ||
     typeof record.order !== 'number'
   ) {
@@ -74,7 +139,7 @@ function normalizeTerminal(value: unknown): Terminal | null {
   const terminal: Terminal = {
     id: record.id,
     name: record.name,
-    profile: record.profile,
+    profile,
     cwd: record.cwd,
     order: record.order
   }
@@ -112,17 +177,18 @@ function normalizeProject(value: unknown): Project | null {
         .filter((command): command is SavedCommand => command !== null)
     : []
 
+  const legacyNotes = typeof record.notes === 'string' ? record.notes : undefined
+  const notebooks = normalizeNotebooks(record.notebooks, legacyNotes)
+
   const project: Project = {
     id: record.id,
     name: record.name,
     path: record.path,
     terminals,
     savedCommands,
-    pinned: record.pinned === true
-  }
-
-  if (typeof record.notes === 'string') {
-    project.notes = record.notes
+    pinned: record.pinned === true,
+    other: record.other === true,
+    notebooks
   }
 
   return project
@@ -151,14 +217,16 @@ function migrateWorkspace(raw: unknown): Workspace {
   const activeProjectId =
     typeof data.activeProjectId === 'string' ? data.activeProjectId : ''
 
-  const globalNotes = typeof data.globalNotes === 'string' ? data.globalNotes : ''
+  const legacyGlobalNotes =
+    typeof data.globalNotes === 'string' ? data.globalNotes : undefined
+  const globalNotebooks = normalizeNotebooks(data.globalNotebooks, legacyGlobalNotes)
   const notesPanelOpen = data.notesPanelOpen === true
 
   return {
     schemaVersion,
     projects,
     activeProjectId,
-    globalNotes,
+    globalNotebooks,
     notesPanelOpen
   }
 }

@@ -1,8 +1,13 @@
-export type TerminalProfile = 'shell' | 'claude' | 'cursor' | 'codex' | 'gemini' | 'custom'
+export type TerminalProfile =
+  | 'grok'
+  | 'shell'
+  | 'claude'
+  | 'cursor'
+  | 'codex'
+  | 'antigravity'
+  | 'custom'
 
 export type AttentionState = 'idle' | 'busy' | 'needsAttention'
-
-export type TerminalRunState = 'running' | 'exited' | 'error'
 
 export interface SavedCommand {
   id: string
@@ -19,6 +24,13 @@ export interface Terminal {
   order: number
 }
 
+export interface Notebook {
+  id: string
+  name: string
+  content: string
+  order: number
+}
+
 export interface Project {
   id: string
   name: string
@@ -26,7 +38,10 @@ export interface Project {
   terminals: Terminal[]
   savedCommands: SavedCommand[]
   pinned?: boolean
+  /** true ise üst çubukta değil, "Diğer" rafında tutulur */
+  other?: boolean
   notes?: string
+  notebooks?: Notebook[]
 }
 
 export interface Workspace {
@@ -34,6 +49,7 @@ export interface Workspace {
   projects: Project[]
   activeProjectId: string
   globalNotes?: string
+  globalNotebooks?: Notebook[]
   notesPanelOpen?: boolean
 }
 
@@ -42,28 +58,37 @@ export interface CreateTerminalRequest {
   profile: TerminalProfile
   cwd: string
   command?: string
-  title?: string
 }
 
 export interface CreateTerminalResult {
   ok: true
 }
 
+export interface TerminalWriteRequest {
+  terminalId: string
+  data: string
+}
+
+export interface TerminalResizeRequest {
+  terminalId: string
+  cols: number
+  rows: number
+  force?: boolean
+}
+
 export interface TerminalIdRequest {
   terminalId: string
+}
+
+export interface TerminalDataEvent {
+  terminalId: string
+  data: string
 }
 
 export interface TerminalExitEvent {
   terminalId: string
   exitCode: number
   signal?: number
-}
-
-export interface TerminalStateEvent {
-  terminalId: string
-  state: TerminalRunState
-  message?: string
-  exitCode?: number
 }
 
 export interface AttentionChangedEvent {
@@ -89,8 +114,11 @@ export interface AttentionDismissRequest {
 
 export interface AgentDeckBridge {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResult>
+  writeTerminal: (request: TerminalWriteRequest) => Promise<void>
+  resizeTerminal: (request: TerminalResizeRequest) => Promise<void>
   killTerminal: (request: TerminalIdRequest) => Promise<void>
-  focusTerminalWindow: (request: TerminalIdRequest) => Promise<boolean>
+  attachTerminal: (request: TerminalIdRequest) => Promise<{ data: string; reattach: boolean }>
+  detachTerminal: (request: TerminalIdRequest) => Promise<void>
   reportTerminalFocus: (request: TerminalIdRequest) => Promise<void>
   reportTerminalUserInput: (request: TerminalIdRequest) => Promise<void>
   resetAttentionSession: () => Promise<void>
@@ -100,9 +128,9 @@ export interface AgentDeckBridge {
   addProject: () => Promise<AddProjectResult>
   checkProjectPath: (path: string) => Promise<boolean>
   revealProjectInFolder: (path: string) => Promise<void>
+  onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe
-  onTerminalState: (callback: (event: TerminalStateEvent) => void) => Unsubscribe
   onAttentionChanged: (callback: (event: AttentionChangedEvent) => void) => Unsubscribe
 }
 

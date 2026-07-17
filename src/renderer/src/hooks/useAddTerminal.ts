@@ -3,21 +3,22 @@ import type { Terminal, TerminalProfile } from '../global'
 import { useWorkspaceStore } from '../store/workspace'
 
 export const PROFILE_OPTIONS: { profile: TerminalProfile; label: string }[] = [
+  { profile: 'grok', label: 'Grok' },
   { profile: 'shell', label: 'Terminal' },
   { profile: 'claude', label: 'Claude' },
   { profile: 'cursor', label: 'Cursor' },
   { profile: 'codex', label: 'Codex' },
-  { profile: 'gemini', label: 'Gemini' },
-  { profile: 'custom', label: 'Özel komut' }
+  { profile: 'antigravity', label: 'Antigravity' }
 ]
 
 function nextTerminalName(profile: TerminalProfile, existing: Terminal[]): string {
   const labels: Record<TerminalProfile, string> = {
+    grok: 'Grok',
     shell: 'Terminal',
     claude: 'Claude',
     cursor: 'Cursor',
     codex: 'Codex',
-    gemini: 'Gemini',
+    antigravity: 'Antigravity',
     custom: 'Özel'
   }
   const count = existing.filter((terminal) => terminal.profile === profile).length + 1
@@ -41,15 +42,6 @@ export function useAddTerminal(): UseAddTerminalResult {
         return
       }
 
-      let command: string | undefined
-      if (profile === 'custom') {
-        const input = window.prompt('Çalıştırılacak özel komut:')
-        if (!input?.trim()) {
-          return
-        }
-        command = input.trim()
-      }
-
       setIsAdding(true)
 
       try {
@@ -59,7 +51,6 @@ export function useAddTerminal(): UseAddTerminalResult {
           id,
           name,
           profile,
-          command,
           cwd: activeProject.path,
           order: activeProject.terminals.length
         }
@@ -67,9 +58,7 @@ export function useAddTerminal(): UseAddTerminalResult {
         await window.agentdeck.createTerminal({
           id,
           profile,
-          cwd: activeProject.path,
-          command,
-          title: `AgentDeck · ${name}`
+          cwd: activeProject.path
         })
 
         addTerminal(activeProject.id, terminal)

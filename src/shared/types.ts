@@ -1,4 +1,12 @@
-export type TerminalProfile = 'shell' | 'claude' | 'cursor' | 'codex' | 'gemini' | 'custom'
+/** custom: yalnızca kayıtlı komut çubuğu için; terminal menüsünde yok. */
+export type TerminalProfile =
+  | 'grok'
+  | 'shell'
+  | 'claude'
+  | 'cursor'
+  | 'codex'
+  | 'antigravity'
+  | 'custom'
 
 export interface SavedCommand {
   id: string
@@ -15,6 +23,14 @@ export interface Terminal {
   order: number
 }
 
+/** Not paneli defteri — serbest metin scratchpad. */
+export interface Notebook {
+  id: string
+  name: string
+  content: string
+  order: number
+}
+
 export interface Project {
   id: string
   name: string
@@ -22,14 +38,20 @@ export interface Project {
   terminals: Terminal[]
   savedCommands: SavedCommand[]
   pinned?: boolean
+  /** true ise üst çubukta değil, "Diğer" rafında tutulur */
+  other?: boolean
+  /** @deprecated eski tek alan; yüklemede notebooks'a migrate edilir */
   notes?: string
+  notebooks?: Notebook[]
 }
 
 export interface Workspace {
   schemaVersion: number
   projects: Project[]
   activeProjectId: string
+  /** @deprecated eski tek alan; yüklemede globalNotebooks'a migrate edilir */
   globalNotes?: string
+  globalNotebooks?: Notebook[]
   notesPanelOpen?: boolean
 }
 
@@ -40,7 +62,7 @@ export function createDefaultWorkspace(): Workspace {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects: [],
     activeProjectId: '',
-    globalNotes: '',
+    globalNotebooks: [],
     notesPanelOpen: false
   }
 }

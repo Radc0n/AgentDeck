@@ -28,14 +28,23 @@ function App(): React.JSX.Element {
   }, [focusedTerminalId, focusedTerminal])
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && focusedTerminalId) {
-        setFocusedTerminalId(null)
-      }
+    if (!focusedTerminalId) {
+      return
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // capture: xterm textarea odağında da Esc gelsin
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      setFocusedTerminalId(null)
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [focusedTerminalId])
 
   const handleCloseFocusedTerminal = useCallback(async (): Promise<void> => {

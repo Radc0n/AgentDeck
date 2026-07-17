@@ -73,6 +73,10 @@ export function resolveProfile(
         cwd
       }
 
+    case 'grok':
+      // Grok Build TUI — `grok` (PATH: ~/.grok/bin)
+      return runThroughShell(platform, cwd, 'grok')
+
     case 'claude':
       return runThroughShell(platform, cwd, 'claude')
 
@@ -82,10 +86,12 @@ export function resolveProfile(
     case 'codex':
       return runThroughShell(platform, cwd, 'codex')
 
-    case 'gemini':
-      return runThroughShell(platform, cwd, 'gemini')
+    case 'antigravity':
+      // Antigravity agent CLI — `agy` (IDE launcher `antigravity` değil)
+      return runThroughShell(platform, cwd, 'agy')
 
     case 'custom': {
+      // Kayıtlı komut çubuğu; menüde listelenmez.
       const command = opts.command?.trim()
       if (!command) {
         throw new Error('Özel profil için komut gerekli.')

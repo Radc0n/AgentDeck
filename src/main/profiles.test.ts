@@ -22,6 +22,23 @@ describe('resolveProfile', () => {
     expect(spec.cwd).toBe(cwd)
   })
 
+  it('Windows grok profilini powershell üzerinden grok çalıştırır', () => {
+    const spec = resolveProfile('grok', { cwd, platform: 'win32' })
+
+    expect(spec).toEqual({
+      file: 'powershell.exe',
+      args: ['-NoLogo', '-Command', 'grok'],
+      cwd
+    })
+  })
+
+  it('Unix grok profilini kabuk üzerinden çalıştırır', () => {
+    const spec = resolveProfile('grok', { cwd, platform: 'darwin' })
+
+    expect(spec.args).toEqual(['-lc', 'grok'])
+    expect(spec.cwd).toBe(cwd)
+  })
+
   it('Windows claude profilini powershell üzerinden çalıştırır', () => {
     const spec = resolveProfile('claude', { cwd, platform: 'win32' })
 
@@ -73,20 +90,20 @@ describe('resolveProfile', () => {
     expect(spec.cwd).toBe(cwd)
   })
 
-  it('Windows gemini profilini powershell üzerinden gemini çalıştırır', () => {
-    const spec = resolveProfile('gemini', { cwd, platform: 'win32' })
+  it('Windows antigravity profilini powershell üzerinden agy çalıştırır', () => {
+    const spec = resolveProfile('antigravity', { cwd, platform: 'win32' })
 
     expect(spec).toEqual({
       file: 'powershell.exe',
-      args: ['-NoLogo', '-Command', 'gemini'],
+      args: ['-NoLogo', '-Command', 'agy'],
       cwd
     })
   })
 
-  it('Unix gemini profilini kabuk üzerinden çalıştırır', () => {
-    const spec = resolveProfile('gemini', { cwd, platform: 'darwin' })
+  it('Unix antigravity profilini kabuk üzerinden agy çalıştırır', () => {
+    const spec = resolveProfile('antigravity', { cwd, platform: 'darwin' })
 
-    expect(spec.args).toEqual(['-lc', 'gemini'])
+    expect(spec.args).toEqual(['-lc', 'agy'])
     expect(spec.cwd).toBe(cwd)
   })
 
