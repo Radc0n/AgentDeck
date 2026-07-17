@@ -1,10 +1,11 @@
-import { BrowserWindow, Notification, dialog, ipcMain } from 'electron'
+import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron'
 import { existsSync } from 'fs'
 import { basename } from 'path'
 import {
   IPC_CHANNELS,
   type AddProjectResult,
   type AttentionChangedEvent,
+  type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
   type TerminalDataEvent,
@@ -14,20 +15,25 @@ import {
   type TerminalSpawnErrorEvent,
   type TerminalWriteRequest
 } from '../shared/ipc'
-import type { Workspace } from '../shared/types'
+import type { TerminalProfile, Workspace } from '../shared/types'
 import {
+  applyAttentionEvent,
   createAttentionContext,
+  dismissAttention,
   evaluateAttentionTimeout,
-  stepAttentionMonitor,
   type AttentionContext,
   type AttentionEvent
 } from './attentionMonitor'
-import { containsRealBell } from './bellDetect'
+import { containsRealBell, stripRealBell } from './bellDetect'
 import { resolveProfile } from './profiles'
 import * as ptyManager from './ptyManager'
 import { loadWorkspace, saveWorkspace } from './sessionStore'
 
 const attentionByTerminal = new Map<string, AttentionContext>()
+// Her terminalin profili. Bildirim (needsAttention) yalnızca ajan profilli terminallere
+// (claude/cursor/codex/gemini/custom) izin verilir; düz "shell" başıboş bir bell (\x07) gönderse bile
+// noktayı yakmamalı.
+const terminalProfiles = new Map<string, TerminalProfile>()
 // Bildirim gösterilmiş terminaller. Kullanıcı o terminale bakana (focus/userInput)
 // kadar aynı terminal için tekrar bildirim göstermeyiz — bell akışı (\x07) sık geldiğinde
 // oluşan spam'i önler.
@@ -38,6 +44,17 @@ const terminalOutputBuffers = new Map<string, string>()
 const MAX_TERMINAL_BUFFER_CHARS = 512_000
 let attentionTimer: ReturnType<typeof setInterval> | null = null
 let ptyCallbacksRegistered = false
+
+function isAgentTerminal(terminalId: string): boolean {
+  const profile = terminalProfiles.get(terminalId)
+  return (
+    profile === 'claude' ||
+    profile === 'cursor' ||
+    profile === 'codex' ||
+    profile === 'gemini' ||
+    profile === 'custom'
+  )
+}
 
 function getRendererWebContents(): Electron.WebContents | null {
   const window = BrowserWindow.getAllWindows()[0]
@@ -88,9 +105,32 @@ function maybeNotifyAttention(terminalId: string): void {
 
   const notification = new Notification({
     title: 'AgentDeck',
-    body: 'Bir terminal dikkatinizi bekliyor.'
+    body: 'Bir terminal dikkatinizi bekliyor.',
+    silent: true
   })
   notification.show()
+}
+
+function resetAttentionSession(): void {
+  for (const [terminalId, ctx] of attentionByTerminal) {
+    if (ctx.state === 'idle' && !ctx.hasUserEngaged) {
+      continue
+    }
+    updateAttentionState(terminalId, createAttentionContext())
+  }
+}
+
+function dismissAttentionForTerminals(terminalIds: string[]): void {
+  for (const terminalId of terminalIds) {
+    const ctx = attentionByTerminal.get(terminalId)
+    if (!ctx) {
+      continue
+    }
+    const next = dismissAttention(ctx)
+    if (next.state !== ctx.state) {
+      updateAttentionState(terminalId, next)
+    }
+  }
 }
 
 function updateAttentionState(
@@ -104,8 +144,8 @@ function updateAttentionState(
   if (!previous || previous.state !== next.state) {
     emitAttentionChanged({ terminalId, state: next.state })
 
-    // OS bildirimi yalnızca bell (\x07) ile tetiklenir ve terminal başına bir kez gösterilir.
-    // Boşta-kalma zaman aşımı sadece in-app glow üretir; masaüstü bildirimi göndermez.
+    // OS bildirimi yalnızca bell (\x07) ile tetiklenir.
+    // In-app rozet: bell veya kullanıcı girdisinden sonra gelen ajan yanıtının susması.
     if (next.state === 'needsAttention' && options.notify) {
       maybeNotifyAttention(terminalId)
     }
@@ -123,7 +163,7 @@ function appendTerminalOutput(terminalId: string, data: string): void {
 }
 
 function sendTerminalData(terminalId: string, data: string): void {
-  const payload: TerminalDataEvent = { terminalId, data }
+  const payload: TerminalDataEvent = { terminalId, data: stripRealBell(data) }
   sendToRenderer(IPC_CHANNELS.TERMINAL_DATA, payload)
 }
 
@@ -135,7 +175,7 @@ function handleAttentionEvent(terminalId: string, event: AttentionEvent): void {
   }
 
   const current = attentionByTerminal.get(terminalId) ?? createAttentionContext()
-  const next = stepAttentionMonitor(current, event, Date.now())
+  const next = applyAttentionEvent(current, event, Date.now())
   updateAttentionState(terminalId, next, {
     notify: event === 'bell'
   })
@@ -154,7 +194,9 @@ function ensurePtyCallbacks(): void {
       sendTerminalData(terminalId, data)
     }
 
-    if (containsRealBell(data)) {
+    // Bildirim noktası yalnızca ajan terminalinin gönderdiği gerçek bell ile yanar.
+    // Düz shell'in başıboş beep'i 'output' sayılır ve noktayı yakmaz.
+    if (containsRealBell(data) && isAgentTerminal(terminalId)) {
       handleAttentionEvent(terminalId, 'bell')
     } else {
       handleAttentionEvent(terminalId, 'output')
@@ -163,6 +205,7 @@ function ensurePtyCallbacks(): void {
 
   ptyManager.onExit((terminalId, exitCode, signal) => {
     attentionByTerminal.delete(terminalId)
+    terminalProfiles.delete(terminalId)
     notifiedTerminals.delete(terminalId)
     attachedTerminals.delete(terminalId)
     pendingReattachTerminals.delete(terminalId)
@@ -181,9 +224,13 @@ function startAttentionPolling(): void {
     return
   }
 
+  // Yalnızca ajan terminallerini yokla: ajan yanıtı sustuğunda koşullu needsAttention.
   attentionTimer = setInterval(() => {
     const now = Date.now()
     for (const [terminalId, context] of attentionByTerminal) {
+      if (!isAgentTerminal(terminalId)) {
+        continue
+      }
       const next = evaluateAttentionTimeout(context, now)
       if (next.state !== context.state) {
         updateAttentionState(terminalId, next)
@@ -208,34 +255,7 @@ function spawnTerminalFromRequest(request: CreateTerminalRequest): void {
   })
   ptyManager.spawnTerminal(request.id, spec)
   attentionByTerminal.set(request.id, createAttentionContext())
-}
-
-export function restoreSavedTerminals(): void {
-  ensurePtyCallbacks()
-
-  const workspace = loadWorkspace()
-
-  for (const project of workspace.projects) {
-    for (const terminal of project.terminals) {
-      if (ptyManager.hasTerminal(terminal.id)) {
-        continue
-      }
-
-      try {
-        spawnTerminalFromRequest({
-          id: terminal.id,
-          profile: terminal.profile,
-          cwd: terminal.cwd,
-          command: terminal.command
-        })
-      } catch (error) {
-        sendSpawnError(
-          terminal.id,
-          toErrorMessage(error, 'Kayıtlı terminal yeniden başlatılamadı.')
-        )
-      }
-    }
-  }
+  terminalProfiles.set(request.id, request.profile)
 }
 
 export function registerIpcHandlers(): void {
@@ -250,6 +270,7 @@ export function registerIpcHandlers(): void {
           if (!attentionByTerminal.has(request.id)) {
             attentionByTerminal.set(request.id, createAttentionContext())
           }
+          terminalProfiles.set(request.id, request.profile)
           return { ok: true }
         }
 
@@ -271,7 +292,7 @@ export function registerIpcHandlers(): void {
 
     attachedTerminals.add(request.terminalId)
     return {
-      data: terminalOutputBuffers.get(request.terminalId) ?? '',
+      data: stripRealBell(terminalOutputBuffers.get(request.terminalId) ?? ''),
       reattach
     }
   })
@@ -308,6 +329,7 @@ export function registerIpcHandlers(): void {
     try {
       ptyManager.kill(request.terminalId)
       attentionByTerminal.delete(request.terminalId)
+      terminalProfiles.delete(request.terminalId)
       notifiedTerminals.delete(request.terminalId)
       attachedTerminals.delete(request.terminalId)
       pendingReattachTerminals.delete(request.terminalId)
@@ -316,6 +338,17 @@ export function registerIpcHandlers(): void {
       throw new Error(toErrorMessage(error, 'Terminal kapatılamadı.'))
     }
   })
+
+  ipcMain.handle(IPC_CHANNELS.ATTENTION_RESET_SESSION, (): void => {
+    resetAttentionSession()
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.ATTENTION_DISMISS_TERMINALS,
+    (_event, request: AttentionDismissRequest): void => {
+      dismissAttentionForTerminals(request.terminalIds)
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.TERMINAL_REPORT_FOCUS, (_event, request: TerminalIdRequest): void => {
     if (!attentionByTerminal.has(request.terminalId)) {
@@ -378,6 +411,21 @@ export function registerIpcHandlers(): void {
       return existsSync(path)
     } catch {
       return false
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER, async (_event, path: string): Promise<void> => {
+    if (typeof path !== 'string' || path.trim() === '') {
+      throw new Error('Geçersiz proje yolu.')
+    }
+
+    if (!existsSync(path)) {
+      throw new Error('Proje klasörüne erişilemiyor.')
+    }
+
+    const errorMessage = await shell.openPath(path)
+    if (errorMessage) {
+      throw new Error(errorMessage)
     }
   })
 }

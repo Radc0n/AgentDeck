@@ -11,6 +11,8 @@ const PROFILE_LABELS: Record<TerminalProfile, string> = {
   shell: 'Terminal',
   claude: 'Claude',
   cursor: 'Cursor',
+  codex: 'Codex',
+  gemini: 'Gemini',
   custom: 'Özel'
 }
 
@@ -78,6 +80,25 @@ export function TerminalView({
       const beforeRows = instance.rows
       fitAddon.fit()
 
+      const screenEl = instance.element?.querySelector('.xterm-screen')
+      const screenRect = screenEl?.getBoundingClientRect()
+      if (screenRect && rect.height > 0) {
+        const overflow = screenRect.height - rect.height
+        if (overflow > 1) {
+          const core = (instance as unknown as {
+            _core: { _renderService: { dimensions: { css: { cell: { height: number } } } } }
+          })._core
+          const cellHeight = core._renderService.dimensions.css.cell.height
+          if (cellHeight > 0) {
+            const extraRows = Math.ceil(overflow / cellHeight)
+            const correctedRows = Math.max(1, instance.rows - extraRows)
+            if (correctedRows !== instance.rows) {
+              instance.resize(instance.cols, correctedRows)
+            }
+          }
+        }
+      }
+
       if (instance.cols === beforeCols && instance.rows === beforeRows) {
         return
       }
@@ -97,15 +118,28 @@ export function TerminalView({
     }
 
     scheduleSyncSize()
+    requestAnimationFrame(() => {
+      scheduleSyncSize()
+    })
 
     const resizeObserver = new ResizeObserver(() => {
       scheduleSyncSize()
     })
     resizeObserver.observe(container)
+    const body = container.closest('.terminal-view__body')
+    if (body instanceof HTMLElement) {
+      resizeObserver.observe(body)
+    }
+
+    const refocusSync = (): void => {
+      scheduleSyncSize()
+    }
+    instance.element?.addEventListener('focus', refocusSync, true)
 
     return () => {
       cancelAnimationFrame(fitFrame)
       resizeObserver.disconnect()
+      instance.element?.removeEventListener('focus', refocusSync, true)
       fitAddonRef.current = null
       xtermRef.current = null
       instance.dispose()
@@ -145,7 +179,9 @@ export function TerminalView({
             <p className="terminal-view__error-message">{spawnError}</p>
           </div>
         ) : null}
-        <div className="terminal-view__terminal" ref={containerRef} />
+        <div className="terminal-view__terminal">
+          <div className="terminal-view__xterm-host" ref={containerRef} />
+        </div>
       </div>
     </article>
   )

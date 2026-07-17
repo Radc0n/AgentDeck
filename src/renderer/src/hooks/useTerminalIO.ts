@@ -9,6 +9,7 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
 
     let liveEnabled = false
     let attachSettled = false
+    let terminalFocused = false
     const pendingLive: string[] = []
 
     const unsubData = window.agentdeck.onTerminalData((event) => {
@@ -83,15 +84,23 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
 
     const dataDisposable = terminal.onData((data) => {
       void window.agentdeck.writeTerminal({ terminalId, data })
-      void window.agentdeck.reportTerminalUserInput({ terminalId })
+      if (attachSettled && terminalFocused && data.length > 0) {
+        void window.agentdeck.reportTerminalUserInput({ terminalId })
+      }
     })
 
     const reportFocus = (): void => {
+      terminalFocused = true
       void window.agentdeck.reportTerminalFocus({ terminalId })
+    }
+
+    const reportBlur = (): void => {
+      terminalFocused = false
     }
 
     const element = terminal.element
     element?.addEventListener('focus', reportFocus, true)
+    element?.addEventListener('blur', reportBlur, true)
     element?.addEventListener('mousedown', reportFocus)
 
     return () => {
@@ -100,6 +109,7 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
       unsubExit()
       dataDisposable.dispose()
       element?.removeEventListener('focus', reportFocus, true)
+      element?.removeEventListener('blur', reportBlur, true)
       element?.removeEventListener('mousedown', reportFocus)
     }
   }, [terminalId, terminal])

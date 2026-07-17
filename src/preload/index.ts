@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   type AgentDeckAPI,
   type AttentionChangedEvent,
+  type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
   type TerminalDataEvent,
@@ -39,6 +40,12 @@ const agentdeck: AgentDeckAPI = {
   reportTerminalUserInput: (request: TerminalIdRequest): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_REPORT_USER_INPUT, request),
 
+  resetAttentionSession: (): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.ATTENTION_RESET_SESSION),
+
+  dismissAttentionForTerminals: (request) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ATTENTION_DISMISS_TERMINALS, request),
+
   loadWorkspace: (): Promise<Workspace> => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_LOAD),
 
   saveWorkspace: (workspace: Workspace): Promise<void> =>
@@ -48,6 +55,9 @@ const agentdeck: AgentDeckAPI = {
 
   checkProjectPath: (path: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_CHECK_PATH, path),
+
+  revealProjectInFolder: (path: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER, path),
 
   onTerminalData: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: TerminalDataEvent): void => {

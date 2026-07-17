@@ -7,7 +7,9 @@ interface ProjectContextMenuProps {
   y: number
   onClose: () => void
   onTogglePin: () => void
+  onRevealInFolder: () => void
   onRemove: () => void
+  folderAccessible: boolean
 }
 
 export function ProjectContextMenu({
@@ -16,7 +18,9 @@ export function ProjectContextMenu({
   y,
   onClose,
   onTogglePin,
-  onRemove
+  onRevealInFolder,
+  onRemove,
+  folderAccessible
 }: ProjectContextMenuProps): React.JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -82,6 +86,18 @@ export function ProjectContextMenu({
         }}
       >
         {project.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="project-context-menu__item"
+        disabled={!folderAccessible}
+        onClick={() => {
+          onRevealInFolder()
+          onClose()
+        }}
+      >
+        Klasörde gör
       </button>
       <div className="project-context-menu__separator" role="separator" />
       <button

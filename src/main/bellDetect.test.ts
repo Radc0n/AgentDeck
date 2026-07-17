@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containsRealBell } from './bellDetect'
+import { containsRealBell, stripRealBell } from './bellDetect'
 
 describe('containsRealBell', () => {
   it('OSC başlık sonlandırıcısındaki BEL gerçek bell sayılmaz', () => {
@@ -15,5 +15,20 @@ describe('containsRealBell', () => {
 
   it('OSC sonrası ayrı BEL gerçek bell sayılır', () => {
     expect(containsRealBell('\x1b]0;title\x07\x07')).toBe(true)
+  })
+})
+
+describe('stripRealBell', () => {
+  it('gerçek BEL karakterlerini kaldırır', () => {
+    expect(stripRealBell('done\x07')).toBe('done')
+    expect(stripRealBell('\x07')).toBe('')
+  })
+
+  it('OSC içindeki BEL korunur', () => {
+    expect(stripRealBell('\x1b]0;claude\x07')).toBe('\x1b]0;claude\x07')
+  })
+
+  it('OSC sonrası ayrı BEL kaldırılır', () => {
+    expect(stripRealBell('\x1b]0;title\x07\x07')).toBe('\x1b]0;title\x07')
   })
 })

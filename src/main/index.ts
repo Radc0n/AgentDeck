@@ -1,13 +1,19 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
-import { registerIpcHandlers, restoreSavedTerminals } from './ipc'
+import { registerIpcHandlers } from './ipc'
+
+function configureApplicationMenu(): void {
+  // Windows/Linux: varsayılan File/Edit menüsünü kaldır; Alt ile geçici görünmesin.
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+  }
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
     show: false,
-    autoHideMenuBar: true,
     title: 'AgentDeck',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -19,10 +25,6 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    restoreSavedTerminals()
-  })
-
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -31,6 +33,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  configureApplicationMenu()
   registerIpcHandlers()
   createWindow()
 

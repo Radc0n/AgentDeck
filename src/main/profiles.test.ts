@@ -56,6 +56,40 @@ describe('resolveProfile', () => {
     expect(spec.cwd).toBe(cwd)
   })
 
+  it('Windows codex profilini powershell üzerinden codex çalıştırır', () => {
+    const spec = resolveProfile('codex', { cwd, platform: 'win32' })
+
+    expect(spec).toEqual({
+      file: 'powershell.exe',
+      args: ['-NoLogo', '-Command', 'codex'],
+      cwd
+    })
+  })
+
+  it('Unix codex profilini kabuk üzerinden çalıştırır', () => {
+    const spec = resolveProfile('codex', { cwd, platform: 'darwin' })
+
+    expect(spec.args).toEqual(['-lc', 'codex'])
+    expect(spec.cwd).toBe(cwd)
+  })
+
+  it('Windows gemini profilini powershell üzerinden gemini çalıştırır', () => {
+    const spec = resolveProfile('gemini', { cwd, platform: 'win32' })
+
+    expect(spec).toEqual({
+      file: 'powershell.exe',
+      args: ['-NoLogo', '-Command', 'gemini'],
+      cwd
+    })
+  })
+
+  it('Unix gemini profilini kabuk üzerinden çalıştırır', () => {
+    const spec = resolveProfile('gemini', { cwd, platform: 'darwin' })
+
+    expect(spec.args).toEqual(['-lc', 'gemini'])
+    expect(spec.cwd).toBe(cwd)
+  })
+
   it('custom profilini verilen komutla kabuk üzerinden çözer', () => {
     const spec = resolveProfile('custom', {
       cwd,

@@ -18,7 +18,10 @@ export const IPC_CHANNELS = {
   TERMINAL_EXIT: 'agentdeck:terminal:exit',
   TERMINAL_SPAWN_ERROR: 'agentdeck:terminal:spawnError',
   ATTENTION_CHANGED: 'agentdeck:attention:changed',
-  PROJECT_CHECK_PATH: 'agentdeck:project:checkPath'
+  ATTENTION_RESET_SESSION: 'agentdeck:attention:resetSession',
+  ATTENTION_DISMISS_TERMINALS: 'agentdeck:attention:dismissTerminals',
+  PROJECT_CHECK_PATH: 'agentdeck:project:checkPath',
+  PROJECT_REVEAL_IN_FOLDER: 'agentdeck:project:revealInFolder'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
@@ -83,6 +86,10 @@ export interface TerminalAttachResult {
   reattach: boolean
 }
 
+export interface AttentionDismissRequest {
+  terminalIds: string[]
+}
+
 export interface AgentDeckAPI {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResult>
   writeTerminal: (request: TerminalWriteRequest) => Promise<void>
@@ -92,10 +99,13 @@ export interface AgentDeckAPI {
   detachTerminal: (request: TerminalIdRequest) => Promise<void>
   reportTerminalFocus: (request: TerminalIdRequest) => Promise<void>
   reportTerminalUserInput: (request: TerminalIdRequest) => Promise<void>
+  resetAttentionSession: () => Promise<void>
+  dismissAttentionForTerminals: (request: AttentionDismissRequest) => Promise<void>
   loadWorkspace: () => Promise<Workspace>
   saveWorkspace: (workspace: Workspace) => Promise<void>
   addProject: () => Promise<AddProjectResult>
   checkProjectPath: (path: string) => Promise<boolean>
+  revealProjectInFolder: (path: string) => Promise<void>
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe

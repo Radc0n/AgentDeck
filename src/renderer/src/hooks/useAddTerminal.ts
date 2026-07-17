@@ -6,6 +6,8 @@ export const PROFILE_OPTIONS: { profile: TerminalProfile; label: string }[] = [
   { profile: 'shell', label: 'Terminal' },
   { profile: 'claude', label: 'Claude' },
   { profile: 'cursor', label: 'Cursor' },
+  { profile: 'codex', label: 'Codex' },
+  { profile: 'gemini', label: 'Gemini' },
   { profile: 'custom', label: 'Özel komut' }
 ]
 
@@ -14,6 +16,8 @@ function nextTerminalName(profile: TerminalProfile, existing: Terminal[]): strin
     shell: 'Terminal',
     claude: 'Claude',
     cursor: 'Cursor',
+    codex: 'Codex',
+    gemini: 'Gemini',
     custom: 'Özel'
   }
   const count = existing.filter((terminal) => terminal.profile === profile).length + 1

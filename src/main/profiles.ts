@@ -79,6 +79,12 @@ export function resolveProfile(
     case 'cursor':
       return runThroughShell(platform, cwd, 'cursor-agent')
 
+    case 'codex':
+      return runThroughShell(platform, cwd, 'codex')
+
+    case 'gemini':
+      return runThroughShell(platform, cwd, 'gemini')
+
     case 'custom': {
       const command = opts.command?.trim()
       if (!command) {
