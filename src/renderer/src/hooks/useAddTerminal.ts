@@ -54,9 +54,10 @@ export function useAddTerminal(): UseAddTerminalResult {
 
       try {
         const id = crypto.randomUUID()
+        const name = nextTerminalName(profile, activeProject.terminals)
         const terminal: Terminal = {
           id,
-          name: nextTerminalName(profile, activeProject.terminals),
+          name,
           profile,
           command,
           cwd: activeProject.path,
@@ -67,7 +68,8 @@ export function useAddTerminal(): UseAddTerminalResult {
           id,
           profile,
           cwd: activeProject.path,
-          command
+          command,
+          title: `AgentDeck · ${name}`
         })
 
         addTerminal(activeProject.id, terminal)

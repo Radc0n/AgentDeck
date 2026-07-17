@@ -131,7 +131,7 @@ npm test
 npm run dist
 ```
 
-`node-pty` veya native module hatasi gorursen mevcut paketleme ayari prebuilt dosyalari kullanacak sekilde hazirlandi. Buna ragmen hata alirsan `node_modules` klasorunu silip yeniden kur:
+Plan B sonrasi terminaller OS konsolunda acilir; `node-pty` / xterm bagimliligi kaldirildi. Genel kurulum hatasi alirsan `node_modules` klasorunu silip yeniden kur:
 
 ```powershell
 Remove-Item -Recurse -Force node_modules

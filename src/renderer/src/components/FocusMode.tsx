@@ -18,7 +18,9 @@ export function FocusMode({
         <button type="button" className="btn btn--ghost" onClick={onExitFocus}>
           ← Izgaraya dön
         </button>
-        <span className="focus-mode__hint">Odak modu — {terminal.name}</span>
+        <span className="focus-mode__hint">
+          Odak — {terminal.name} (native pencere)
+        </span>
       </div>
       <div className="focus-mode__terminal">
         <TerminalView

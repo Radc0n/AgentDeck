@@ -32,7 +32,8 @@ export function SavedCommandsBar(): React.JSX.Element {
         id,
         profile: 'custom',
         cwd: activeProject.path,
-        command
+        command,
+        title: `AgentDeck · ${label}`
       })
 
       addTerminal(activeProject.id, terminal)

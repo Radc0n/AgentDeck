@@ -3,15 +3,12 @@ import {
   IPC_CHANNELS,
   type AgentDeckAPI,
   type AttentionChangedEvent,
-  type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
-  type TerminalDataEvent,
   type TerminalExitEvent,
   type TerminalIdRequest,
-  type TerminalResizeRequest,
   type TerminalSpawnErrorEvent,
-  type TerminalWriteRequest
+  type TerminalStateEvent
 } from '../shared/ipc'
 import type { Workspace } from '../shared/types'
 
@@ -19,20 +16,11 @@ const agentdeck: AgentDeckAPI = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, request),
 
-  writeTerminal: (request: TerminalWriteRequest): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_WRITE, request),
-
-  resizeTerminal: (request: TerminalResizeRequest): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, request),
-
   killTerminal: (request: TerminalIdRequest): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_KILL, request),
 
-  attachTerminal: (request: TerminalIdRequest) =>
-    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_ATTACH, request),
-
-  detachTerminal: (request: TerminalIdRequest): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_DETACH, request),
+  focusTerminalWindow: (request: TerminalIdRequest): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_FOCUS_WINDOW, request),
 
   reportTerminalFocus: (request: TerminalIdRequest): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_REPORT_FOCUS, request),
@@ -59,16 +47,6 @@ const agentdeck: AgentDeckAPI = {
   revealProjectInFolder: (path: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER, path),
 
-  onTerminalData: (callback) => {
-    const listener = (_event: IpcRendererEvent, payload: TerminalDataEvent): void => {
-      callback(payload)
-    }
-    ipcRenderer.on(IPC_CHANNELS.TERMINAL_DATA, listener)
-    return () => {
-      ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_DATA, listener)
-    }
-  },
-
   onTerminalExit: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: TerminalExitEvent): void => {
       callback(payload)
@@ -86,6 +64,16 @@ const agentdeck: AgentDeckAPI = {
     ipcRenderer.on(IPC_CHANNELS.TERMINAL_SPAWN_ERROR, listener)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_SPAWN_ERROR, listener)
+    }
+  },
+
+  onTerminalState: (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: TerminalStateEvent): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IPC_CHANNELS.TERMINAL_STATE, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_STATE, listener)
     }
   },
 

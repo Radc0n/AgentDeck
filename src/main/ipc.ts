@@ -8,42 +8,28 @@ import {
   type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
-  type TerminalDataEvent,
   type TerminalExitEvent,
   type TerminalIdRequest,
-  type TerminalResizeRequest,
   type TerminalSpawnErrorEvent,
-  type TerminalWriteRequest
+  type TerminalStateEvent
 } from '../shared/ipc'
 import type { TerminalProfile, Workspace } from '../shared/types'
 import {
   applyAttentionEvent,
   createAttentionContext,
   dismissAttention,
-  evaluateAttentionTimeout,
   type AttentionContext,
   type AttentionEvent
 } from './attentionMonitor'
-import { containsRealBell, stripRealBell } from './bellDetect'
+import * as nativeSessionManager from './nativeSessionManager'
 import { resolveProfile } from './profiles'
-import * as ptyManager from './ptyManager'
 import { loadWorkspace, saveWorkspace } from './sessionStore'
 
 const attentionByTerminal = new Map<string, AttentionContext>()
-// Her terminalin profili. Bildirim (needsAttention) yalnızca ajan profilli terminallere
-// (claude/cursor/codex/gemini/custom) izin verilir; düz "shell" başıboş bir bell (\x07) gönderse bile
-// noktayı yakmamalı.
+// Bildirim yalnızca ajan profilli terminallere (claude/cursor/codex/gemini/custom).
 const terminalProfiles = new Map<string, TerminalProfile>()
-// Bildirim gösterilmiş terminaller. Kullanıcı o terminale bakana (focus/userInput)
-// kadar aynı terminal için tekrar bildirim göstermeyiz — bell akışı (\x07) sık geldiğinde
-// oluşan spam'i önler.
 const notifiedTerminals = new Set<string>()
-const attachedTerminals = new Set<string>()
-const pendingReattachTerminals = new Set<string>()
-const terminalOutputBuffers = new Map<string, string>()
-const MAX_TERMINAL_BUFFER_CHARS = 512_000
-let attentionTimer: ReturnType<typeof setInterval> | null = null
-let ptyCallbacksRegistered = false
+let sessionCallbacksRegistered = false
 
 function isAgentTerminal(terminalId: string): boolean {
   const profile = terminalProfiles.get(terminalId)
@@ -79,6 +65,15 @@ function emitAttentionChanged(event: AttentionChangedEvent): void {
 function sendSpawnError(terminalId: string, message: string): void {
   const payload: TerminalSpawnErrorEvent = { terminalId, message }
   sendToRenderer(IPC_CHANNELS.TERMINAL_SPAWN_ERROR, payload)
+  sendToRenderer(IPC_CHANNELS.TERMINAL_STATE, {
+    terminalId,
+    state: 'error',
+    message
+  } satisfies TerminalStateEvent)
+}
+
+function sendTerminalState(event: TerminalStateEvent): void {
+  sendToRenderer(IPC_CHANNELS.TERMINAL_STATE, event)
 }
 
 function isWindowFocused(): boolean {
@@ -91,13 +86,10 @@ function maybeNotifyAttention(terminalId: string): void {
     return
   }
 
-  // Pencere odaktaysa kullanıcı zaten uygulamaya bakıyor; in-app glow yeterli.
   if (isWindowFocused()) {
     return
   }
 
-  // Bu terminal için zaten bildirim gösterildiyse, kullanıcı ona bakana (focus/userInput)
-  // kadar tekrar gösterme.
   if (notifiedTerminals.has(terminalId)) {
     return
   }
@@ -144,32 +136,13 @@ function updateAttentionState(
   if (!previous || previous.state !== next.state) {
     emitAttentionChanged({ terminalId, state: next.state })
 
-    // OS bildirimi yalnızca bell (\x07) ile tetiklenir.
-    // In-app rozet: bell veya kullanıcı girdisinden sonra gelen ajan yanıtının susması.
     if (next.state === 'needsAttention' && options.notify) {
       maybeNotifyAttention(terminalId)
     }
   }
 }
 
-function appendTerminalOutput(terminalId: string, data: string): void {
-  const merged = (terminalOutputBuffers.get(terminalId) ?? '') + data
-  terminalOutputBuffers.set(
-    terminalId,
-    merged.length > MAX_TERMINAL_BUFFER_CHARS
-      ? merged.slice(merged.length - MAX_TERMINAL_BUFFER_CHARS)
-      : merged
-  )
-}
-
-function sendTerminalData(terminalId: string, data: string): void {
-  const payload: TerminalDataEvent = { terminalId, data: stripRealBell(data) }
-  sendToRenderer(IPC_CHANNELS.TERMINAL_DATA, payload)
-}
-
 function handleAttentionEvent(terminalId: string, event: AttentionEvent): void {
-  // Kullanıcı terminale baktığında/yazdığında "bildirildi" işaretini temizle —
-  // sonraki gerçek dikkat olayında yeniden bildirilebilsin.
   if (event === 'focus' || event === 'userInput') {
     notifiedTerminals.delete(terminalId)
   }
@@ -181,64 +154,45 @@ function handleAttentionEvent(terminalId: string, event: AttentionEvent): void {
   })
 }
 
-function ensurePtyCallbacks(): void {
-  if (ptyCallbacksRegistered) {
+function ensureSessionCallbacks(): void {
+  if (sessionCallbacksRegistered) {
     return
   }
-  ptyCallbacksRegistered = true
+  sessionCallbacksRegistered = true
 
-  ptyManager.onData((terminalId, data) => {
-    appendTerminalOutput(terminalId, data)
+  nativeSessionManager.onExit((terminalId, exitCode, signal) => {
+    const wasAgent = isAgentTerminal(terminalId)
 
-    if (attachedTerminals.has(terminalId)) {
-      sendTerminalData(terminalId, data)
-    }
-
-    // Bildirim noktası yalnızca ajan terminalinin gönderdiği gerçek bell ile yanar.
-    // Düz shell'in başıboş beep'i 'output' sayılır ve noktayı yakmaz.
-    if (containsRealBell(data) && isAgentTerminal(terminalId)) {
-      handleAttentionEvent(terminalId, 'bell')
-    } else {
-      handleAttentionEvent(terminalId, 'output')
-    }
-  })
-
-  ptyManager.onExit((terminalId, exitCode, signal) => {
     attentionByTerminal.delete(terminalId)
     terminalProfiles.delete(terminalId)
     notifiedTerminals.delete(terminalId)
-    attachedTerminals.delete(terminalId)
-    pendingReattachTerminals.delete(terminalId)
-    terminalOutputBuffers.delete(terminalId)
+
+    sendTerminalState({
+      terminalId,
+      state: 'exited',
+      exitCode
+    })
+
     const payload: TerminalExitEvent = { terminalId, exitCode, signal }
     sendToRenderer(IPC_CHANNELS.TERMINAL_EXIT, payload)
+
+    // Native modda PTY çıktısı yok: ajan süreci bittiğinde dikkat çek.
+    if (wasAgent) {
+      updateAttentionState(
+        terminalId,
+        {
+          ...createAttentionContext(),
+          state: 'needsAttention',
+          responseNotified: true
+        },
+        { notify: true }
+      )
+    }
   })
 
-  ptyManager.onSpawnError((terminalId, message) => {
+  nativeSessionManager.onSpawnError((terminalId, message) => {
     sendSpawnError(terminalId, message)
   })
-}
-
-function startAttentionPolling(): void {
-  if (attentionTimer) {
-    return
-  }
-
-  // Yalnızca ajan terminallerini yokla: ajan yanıtı sustuğunda koşullu needsAttention.
-  attentionTimer = setInterval(() => {
-    const now = Date.now()
-    for (const [terminalId, context] of attentionByTerminal) {
-      if (!isAgentTerminal(terminalId)) {
-        continue
-      }
-      const next = evaluateAttentionTimeout(context, now)
-      if (next.state !== context.state) {
-        updateAttentionState(terminalId, next)
-      } else {
-        attentionByTerminal.set(terminalId, next)
-      }
-    }
-  }, 1000)
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
@@ -253,24 +207,27 @@ function spawnTerminalFromRequest(request: CreateTerminalRequest): void {
     cwd: request.cwd,
     command: request.command
   })
-  ptyManager.spawnTerminal(request.id, spec)
+  nativeSessionManager.spawnSession(request.id, spec, {
+    title: request.title ?? request.id
+  })
   attentionByTerminal.set(request.id, createAttentionContext())
   terminalProfiles.set(request.id, request.profile)
+  sendTerminalState({ terminalId: request.id, state: 'running' })
 }
 
 export function registerIpcHandlers(): void {
-  ensurePtyCallbacks()
-  startAttentionPolling()
+  ensureSessionCallbacks()
 
   ipcMain.handle(
     IPC_CHANNELS.TERMINAL_CREATE,
     (_event, request: CreateTerminalRequest): CreateTerminalResult => {
       try {
-        if (ptyManager.hasTerminal(request.id)) {
+        if (nativeSessionManager.hasSession(request.id)) {
           if (!attentionByTerminal.has(request.id)) {
             attentionByTerminal.set(request.id, createAttentionContext())
           }
           terminalProfiles.set(request.id, request.profile)
+          sendTerminalState({ terminalId: request.id, state: 'running' })
           return { ok: true }
         }
 
@@ -284,60 +241,30 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_ATTACH, (_event, request: TerminalIdRequest) => {
-    const reattach = pendingReattachTerminals.has(request.terminalId)
-    if (reattach) {
-      pendingReattachTerminals.delete(request.terminalId)
-    }
-
-    attachedTerminals.add(request.terminalId)
-    return {
-      data: stripRealBell(terminalOutputBuffers.get(request.terminalId) ?? ''),
-      reattach
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_DETACH, (_event, request: TerminalIdRequest): void => {
-    if (!attachedTerminals.delete(request.terminalId)) {
-      return
-    }
-
-    if (ptyManager.hasTerminal(request.terminalId)) {
-      pendingReattachTerminals.add(request.terminalId)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_WRITE, (_event, request: TerminalWriteRequest): void => {
-    try {
-      ptyManager.write(request.terminalId, request.data)
-    } catch (error) {
-      throw new Error(toErrorMessage(error, 'Terminal girdisi yazılamadı.'))
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_RESIZE, (_event, request: TerminalResizeRequest): void => {
-    try {
-      ptyManager.resize(request.terminalId, request.cols, request.rows, {
-        force: request.force === true
-      })
-    } catch (error) {
-      throw new Error(toErrorMessage(error, 'Terminal boyutu değiştirilemedi.'))
-    }
-  })
-
   ipcMain.handle(IPC_CHANNELS.TERMINAL_KILL, (_event, request: TerminalIdRequest): void => {
     try {
-      ptyManager.kill(request.terminalId)
+      if (nativeSessionManager.hasSession(request.terminalId)) {
+        nativeSessionManager.killSession(request.terminalId)
+      }
       attentionByTerminal.delete(request.terminalId)
       terminalProfiles.delete(request.terminalId)
       notifiedTerminals.delete(request.terminalId)
-      attachedTerminals.delete(request.terminalId)
-      pendingReattachTerminals.delete(request.terminalId)
-      terminalOutputBuffers.delete(request.terminalId)
     } catch (error) {
       throw new Error(toErrorMessage(error, 'Terminal kapatılamadı.'))
     }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_FOCUS_WINDOW,
+    (_event, request: TerminalIdRequest): boolean => {
+      const ok = nativeSessionManager.focusSession(request.terminalId)
+      if (ok && attentionByTerminal.has(request.terminalId)) {
+        handleAttentionEvent(request.terminalId, 'focus')
+        handleAttentionEvent(request.terminalId, 'userInput')
+      }
+      return ok
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.ATTENTION_RESET_SESSION, (): void => {
     resetAttentionSession()
