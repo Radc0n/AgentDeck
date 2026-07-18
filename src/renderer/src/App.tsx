@@ -54,10 +54,12 @@ function App(): React.JSX.Element {
 
     try {
       await window.agentdeck.killTerminal({ terminalId: focusedTerminalId })
-      useWorkspaceStore.getState().removeTerminal(activeProject.id, focusedTerminalId)
-      setFocusedTerminalId(null)
     } catch (error) {
       console.error('Terminal kapatılamadı:', error)
+    } finally {
+      // Süreç çökmüş olsa bile panel UI'dan kalksın.
+      useWorkspaceStore.getState().removeTerminal(activeProject.id, focusedTerminalId)
+      setFocusedTerminalId(null)
     }
   }, [activeProject, focusedTerminalId])
 

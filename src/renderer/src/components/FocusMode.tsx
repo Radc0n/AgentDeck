@@ -37,11 +37,9 @@ export function FocusMode({
             <path d="M15 18 9 12l6-6" />
           </svg>
           Izgaraya dön
+          <span className="focus-mode__exit-esc">(esc)</span>
         </span>
-        <span className="focus-mode__hint">
-          Odak — {terminal.name}
-          <span className="focus-mode__hint-key">Esc</span>
-        </span>
+        <span className="focus-mode__hint">Odak — {terminal.name}</span>
       </button>
       <div className="focus-mode__terminal">
         <TerminalView

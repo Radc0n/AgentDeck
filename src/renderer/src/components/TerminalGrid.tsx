@@ -39,9 +39,11 @@ export function TerminalGrid({ onFocusTerminal }: TerminalGridProps): React.JSX.
   const handleCloseTerminal = async (terminalId: string): Promise<void> => {
     try {
       await window.agentdeck.killTerminal({ terminalId })
-      removeTerminal(activeProject.id, terminalId)
     } catch (error) {
       console.error('Terminal kapatılamadı:', error)
+    } finally {
+      // Süreç çökmüş olsa bile panel UI'dan kalksın.
+      removeTerminal(activeProject.id, terminalId)
     }
   }
 

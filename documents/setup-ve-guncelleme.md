@@ -2,6 +2,21 @@
 
 Bu rehber AgentDeck'i masaustu uygulamasi olarak kurmak ve projeye yeni feature ekledikten sonra uygulamayi guncellemek icin kullanilir.
 
+## Uygulama Ikonu
+
+Kaynak logo: `build/icon-source.png` (orijinal).
+Kare PNG: `build/icon.png` (1024x1024, ortadan kirpilmis).
+Windows ICO: `build/icon.ico` (exe, kisayol, installer).
+
+Yeni logo icin: kare PNG'yi `build/icon.png` olarak koy, sonra:
+
+```powershell
+node -e "require('png-to-ico').default('build/icon.png').then(b=>require('fs').writeFileSync('build/icon.ico', b))"
+npm run dist
+```
+
+`png-to-ico` yoksa: `npm install --no-save png-to-ico`
+
 ## Ilk Kurulum
 
 1. Proje klasorunde terminal ac:
@@ -118,7 +133,17 @@ Sadece production build alir. Installer uretmez.
 npm run dist
 ```
 
-Production build alir ve Windows installer uretir. Son kullanici gibi acmak istedigin surum icin bu komut kullanilir.
+Production build alir ve Windows installer uretir. Yaninda `dist\win-unpacked\` klasorunu da gunceller. Son kullanici gibi acmak istedigin surum icin bu komut kullanilir.
+
+```powershell
+npm run dist:dir
+```
+
+Installer olmadan sadece `dist\win-unpacked\` uretir (daha hizli). Kurulum istemeden uygulamayi calistirmak icin:
+
+```text
+C:\myPrograms\script\AgentDeck\dist\win-unpacked\AgentDeck.exe
+```
 
 ## Sorun Giderme
 
@@ -151,6 +176,30 @@ Masaustu kisayolu gorunmuyorsa Windows bu bilgisayarda OneDrive masaustu kullani
 C:\Users\savas\OneDrive\Masaüstü\AgentDeck.lnk
 ```
 
+## Installer Kurmadan Calistirma (win-unpacked)
+
+Kurulum sihirbazini istemiyorsan dogrudan unpacked exe yeterlidir:
+
+1. Paketi guncelle:
+
+   ```powershell
+   npm run dist:dir
+   ```
+
+   veya tam paket (installer + unpacked):
+
+   ```powershell
+   npm run dist
+   ```
+
+2. Uygulamayi ac:
+
+   ```text
+   C:\myPrograms\script\AgentDeck\dist\win-unpacked\AgentDeck.exe
+   ```
+
+Istersen bu exe'ye masaustu kisayolu olusturabilirsin. Kod degistikce ayni komutu tekrar calistirip exe'yi yeniden uretmen yeterli.
+
 ## Kisa Akis
 
 Gelistirirken:
@@ -167,4 +216,4 @@ npm test
 npm run dist
 ```
 
-Sonra `dist` klasorundeki installer'i calistir.
+Sonra ya `dist\AgentDeck-Setup-0.1.0.exe` installer'ini calistir, ya da `dist\win-unpacked\AgentDeck.exe` ile dogrudan ac.

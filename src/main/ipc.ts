@@ -327,16 +327,18 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.TERMINAL_KILL, (_event, request: TerminalIdRequest): void => {
+    // PTY yoksa bile (crash sonrası) UI kapatabilsin; kill idempotent.
     try {
       ptyManager.kill(request.terminalId)
+    } catch (error) {
+      throw new Error(toErrorMessage(error, 'Terminal kapatılamadı.'))
+    } finally {
       attentionByTerminal.delete(request.terminalId)
       terminalProfiles.delete(request.terminalId)
       notifiedTerminals.delete(request.terminalId)
       attachedTerminals.delete(request.terminalId)
       pendingReattachTerminals.delete(request.terminalId)
       terminalOutputBuffers.delete(request.terminalId)
-    } catch (error) {
-      throw new Error(toErrorMessage(error, 'Terminal kapatılamadı.'))
     }
   })
 

@@ -7,6 +7,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "dist": "npm run build && electron-builder --win nsis",
+    "dist:dir": "npm run build && electron-builder --win dir",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run"
   },
@@ -14,7 +15,8 @@
     "appId": "com.agentdeck.app",
     "productName": "AgentDeck",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
@@ -26,6 +28,7 @@
     ],
     "npmRebuild": false,
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",

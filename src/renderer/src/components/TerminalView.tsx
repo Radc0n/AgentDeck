@@ -154,7 +154,11 @@ export function TerminalView({
     <article
       className={`terminal-view${attentionClass}`}
       onDoubleClick={onDoubleClick}
-      title="Odak modu için çift tıklayın"
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onDoubleClick()
+      }}
+      title="Odak modu: çift tık veya sağ tık"
     >
       <header className="terminal-view__header">
         <span className={`terminal-view__profile terminal-view__profile--${terminal.profile}`}>

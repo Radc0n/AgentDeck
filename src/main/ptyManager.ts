@@ -100,11 +100,16 @@ export function resize(
 
 export function kill(id: string): void {
   const terminal = terminals.get(id)
+  // Süreç zaten çıkmışsa (crash/exit) map boş — kapatma UI için no-op olmalı.
   if (!terminal) {
-    throw new Error(`Terminal bulunamadı: ${id}`)
+    return
   }
-  terminal.kill()
   terminals.delete(id)
+  try {
+    terminal.kill()
+  } catch {
+    // ConPTY / süreç zaten ölü olabilir.
+  }
 }
 
 export function onData(handler: DataHandler): () => void {
