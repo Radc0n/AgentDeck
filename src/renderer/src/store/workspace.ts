@@ -81,6 +81,8 @@ function sortNotebooks(notebooks: Notebook[]): Notebook[] {
 export interface WorkspaceStoreState {
   projects: Project[]
   activeProjectId: string
+  /** Proje başına seçili (görünen) terminal sekmesi */
+  activeTerminalByProjectId: Record<string, string>
   attentionByTerminalId: Record<string, AttentionState>
   globalNotebooks: Notebook[]
   isNotesPanelOpen: boolean
@@ -94,6 +96,7 @@ export interface WorkspaceStoreState {
   reorderMainProjects: (fromMainIndex: number, toMainSlot: number) => void
   addTerminal: (projectId: string, terminal: Terminal) => void
   removeTerminal: (projectId: string, terminalId: string) => void
+  setActiveTerminal: (projectId: string, terminalId: string) => void
   setAttention: (terminalId: string, state: AttentionState) => void
   createGlobalNotebook: (name: string) => string
   createProjectNotebook: (projectId: string, name: string) => string
@@ -109,12 +112,40 @@ export interface WorkspaceStoreState {
   ) => void
   toggleNotesPanel: () => void
   getActiveProject: () => Project | undefined
+  getActiveTerminalId: (projectId?: string) => string | null
   getAttention: (terminalId: string) => AttentionState
+}
+
+function withoutProjectActiveTerminal(
+  map: Record<string, string>,
+  projectId: string
+): Record<string, string> {
+  if (!(projectId in map)) {
+    return map
+  }
+  const next = { ...map }
+  delete next[projectId]
+  return next
+}
+
+function resolveActiveTerminalId(
+  project: Project | undefined,
+  preferredId: string | undefined
+): string | null {
+  if (!project || project.terminals.length === 0) {
+    return null
+  }
+  if (preferredId && project.terminals.some((terminal) => terminal.id === preferredId)) {
+    return preferredId
+  }
+  const sorted = [...project.terminals].sort((a, b) => a.order - b.order)
+  return sorted[0]?.id ?? null
 }
 
 export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   projects: [],
   activeProjectId: '',
+  activeTerminalByProjectId: {},
   attentionByTerminalId: {},
   globalNotebooks: [],
   isNotesPanelOpen: false,
@@ -129,6 +160,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         }))
       ),
       activeProjectId: workspace.activeProjectId,
+      activeTerminalByProjectId: {},
       attentionByTerminalId: {},
       globalNotebooks: sortNotebooks(workspace.globalNotebooks ?? []),
       isNotesPanelOpen: workspace.notesPanelOpen ?? false
@@ -178,7 +210,15 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         state.globalNotebooks,
         state.isNotesPanelOpen
       )
-      return { projects, activeProjectId, attentionByTerminalId }
+      return {
+        projects,
+        activeProjectId,
+        attentionByTerminalId,
+        activeTerminalByProjectId: withoutProjectActiveTerminal(
+          state.activeTerminalByProjectId,
+          projectId
+        )
+      }
     })
   },
 
@@ -326,20 +366,33 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         state.globalNotebooks,
         state.isNotesPanelOpen
       )
-      return { projects }
+      return {
+        projects,
+        activeTerminalByProjectId: {
+          ...state.activeTerminalByProjectId,
+          [projectId]: terminal.id
+        }
+      }
     })
   },
 
   removeTerminal: (projectId, terminalId) => {
     set((state) => {
-      const projects = state.projects.map((project) => {
-        if (project.id !== projectId) {
-          return project
+      const project = state.projects.find((item) => item.id === projectId)
+      const closedOrder =
+        project?.terminals.find((terminal) => terminal.id === terminalId)?.order ?? 0
+      const remaining = (project?.terminals ?? [])
+        .filter((terminal) => terminal.id !== terminalId)
+        .sort((a, b) => a.order - b.order)
+
+      const projects = state.projects.map((item) => {
+        if (item.id !== projectId) {
+          return item
         }
 
         return {
-          ...project,
-          terminals: project.terminals.filter((terminal) => terminal.id !== terminalId)
+          ...item,
+          terminals: item.terminals.filter((terminal) => terminal.id !== terminalId)
         }
       })
 
@@ -347,13 +400,55 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         terminalId
       ])
 
+      const currentActive = state.activeTerminalByProjectId[projectId]
+      const activeStillValid =
+        currentActive !== undefined &&
+        currentActive !== terminalId &&
+        remaining.some((terminal) => terminal.id === currentActive)
+
+      let activeTerminalByProjectId = state.activeTerminalByProjectId
+      if (!activeStillValid) {
+        if (remaining.length === 0) {
+          activeTerminalByProjectId = withoutProjectActiveTerminal(
+            state.activeTerminalByProjectId,
+            projectId
+          )
+        } else {
+          const successor =
+            remaining.find((terminal) => terminal.order >= closedOrder) ??
+            remaining[remaining.length - 1]
+          activeTerminalByProjectId = {
+            ...state.activeTerminalByProjectId,
+            [projectId]: successor.id
+          }
+        }
+      }
+
       schedulePersist(
         projects,
         state.activeProjectId,
         state.globalNotebooks,
         state.isNotesPanelOpen
       )
-      return { projects, attentionByTerminalId }
+      return { projects, attentionByTerminalId, activeTerminalByProjectId }
+    })
+  },
+
+  setActiveTerminal: (projectId, terminalId) => {
+    set((state) => {
+      const project = state.projects.find((item) => item.id === projectId)
+      if (!project?.terminals.some((terminal) => terminal.id === terminalId)) {
+        return state
+      }
+      if (state.activeTerminalByProjectId[projectId] === terminalId) {
+        return state
+      }
+      return {
+        activeTerminalByProjectId: {
+          ...state.activeTerminalByProjectId,
+          [projectId]: terminalId
+        }
+      }
     })
   },
 
@@ -560,6 +655,13 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
   getActiveProject: () => {
     const { projects, activeProjectId } = get()
     return projects.find((project) => project.id === activeProjectId)
+  },
+
+  getActiveTerminalId: (projectId) => {
+    const state = get()
+    const id = projectId ?? state.activeProjectId
+    const project = state.projects.find((item) => item.id === id)
+    return resolveActiveTerminalId(project, state.activeTerminalByProjectId[id])
   },
 
   getAttention: (terminalId) => {

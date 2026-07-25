@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FocusMode } from './components/FocusMode'
 import { NotesPanel } from './components/NotesPanel'
 import { SavedCommandsBar } from './components/SavedCommandsBar'
 import { StatusBar } from './components/StatusBar'
-import { TerminalGrid } from './components/TerminalGrid'
+import { TerminalWorkspace } from './components/TerminalWorkspace'
 import { TopBar } from './components/TopBar'
 import { useAttentionSync } from './hooks/useAttentionSync'
 import { useWorkspaceStore } from './store/workspace'
@@ -13,58 +11,13 @@ function App(): React.JSX.Element {
 
   const getActiveProject = useWorkspaceStore((state) => state.getActiveProject)
   const isNotesPanelOpen = useWorkspaceStore((state) => state.isNotesPanelOpen)
-
-  const [focusedTerminalId, setFocusedTerminalId] = useState<string | null>(null)
+  const getActiveTerminalId = useWorkspaceStore((state) => state.getActiveTerminalId)
 
   const activeProject = getActiveProject()
-  const focusedTerminal = activeProject?.terminals.find(
-    (terminal) => terminal.id === focusedTerminalId
-  )
-
-  useEffect(() => {
-    if (focusedTerminalId && !focusedTerminal) {
-      setFocusedTerminalId(null)
-    }
-  }, [focusedTerminalId, focusedTerminal])
-
-  useEffect(() => {
-    if (!focusedTerminalId) {
-      return
-    }
-
-    // capture: xterm textarea odağında da Esc gelsin
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return
-      }
-
-      event.preventDefault()
-      event.stopPropagation()
-      setFocusedTerminalId(null)
-    }
-
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [focusedTerminalId])
-
-  const handleCloseFocusedTerminal = useCallback(async (): Promise<void> => {
-    if (!activeProject || !focusedTerminalId) {
-      return
-    }
-
-    try {
-      await window.agentdeck.killTerminal({ terminalId: focusedTerminalId })
-    } catch (error) {
-      console.error('Terminal kapatılamadı:', error)
-    } finally {
-      // Süreç çökmüş olsa bile panel UI'dan kalksın.
-      useWorkspaceStore.getState().removeTerminal(activeProject.id, focusedTerminalId)
-      setFocusedTerminalId(null)
-    }
-  }, [activeProject, focusedTerminalId])
-
   const terminalCount = activeProject?.terminals.length ?? 0
-  const viewMode = focusedTerminalId ? 'focus' : 'grid'
+  const activeTerminalId = getActiveTerminalId()
+  const activeTerminalName =
+    activeProject?.terminals.find((terminal) => terminal.id === activeTerminalId)?.name ?? null
 
   return (
     <div className="app">
@@ -75,35 +28,14 @@ function App(): React.JSX.Element {
           {isNotesPanelOpen && <NotesPanel />}
 
           <div className="app__content">
-            {focusedTerminal && activeProject ? (
-              <FocusMode
-                terminal={focusedTerminal}
-                onClose={() => void handleCloseFocusedTerminal()}
-                onExitFocus={() => setFocusedTerminalId(null)}
-              />
-            ) : (
-              <TerminalGrid onFocusTerminal={setFocusedTerminalId} />
-            )}
+            <TerminalWorkspace />
           </div>
         </div>
       </main>
 
       <SavedCommandsBar />
 
-      <StatusBar
-        viewMode={viewMode}
-        terminalCount={terminalCount}
-        onToggleViewMode={() => {
-          if (viewMode === 'focus') {
-            setFocusedTerminalId(null)
-          } else if (activeProject && activeProject.terminals.length > 0) {
-            const first = [...activeProject.terminals].sort((a, b) => a.order - b.order)[0]
-            if (first) {
-              setFocusedTerminalId(first.id)
-            }
-          }
-        }}
-      />
+      <StatusBar terminalCount={terminalCount} activeTerminalName={activeTerminalName} />
     </div>
   )
 }

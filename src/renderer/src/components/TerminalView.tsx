@@ -19,12 +19,18 @@ const PROFILE_LABELS: Record<TerminalProfile, string> = {
 
 interface TerminalViewProps {
   terminal: Terminal
+  /** full: kart başlığı (eski grid); bare: sekme yüzeyi */
+  chrome?: 'full' | 'bare'
+  /** bare modda görünür pane — fit/odak için */
+  active?: boolean
   onClose: () => void
-  onDoubleClick: () => void
+  onDoubleClick?: () => void
 }
 
 export function TerminalView({
   terminal,
+  chrome = 'full',
+  active = true,
   onClose,
   onDoubleClick
 }: TerminalViewProps): React.JSX.Element {
@@ -86,9 +92,13 @@ export function TerminalView({
       if (screenRect && rect.height > 0) {
         const overflow = screenRect.height - rect.height
         if (overflow > 1) {
-          const core = (instance as unknown as {
-            _core: { _renderService: { dimensions: { css: { cell: { height: number } } } } }
-          })._core
+          const core = (
+            instance as unknown as {
+              _core: {
+                _renderService: { dimensions: { css: { cell: { height: number } } } }
+              }
+            }
+          )._core
           const cellHeight = core._renderService.dimensions.css.cell.height
           if (cellHeight > 0) {
             const extraRows = Math.ceil(overflow / cellHeight)
@@ -148,35 +158,73 @@ export function TerminalView({
     }
   }, [terminal.id])
 
-  const attentionClass = attention === 'needsAttention' ? ' terminal-view--attention' : ''
+  // Sekme görünür olunca yeniden fit + odak
+  useEffect(() => {
+    if (!active) {
+      return
+    }
+
+    const instance = xtermRef.current
+    const fitAddon = fitAddonRef.current
+    const container = containerRef.current
+    if (!instance || !fitAddon || !container) {
+      return
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const rect = container.getBoundingClientRect()
+      if (rect.width < 20 || rect.height < 20) {
+        return
+      }
+      fitAddon.fit()
+      void window.agentdeck.resizeTerminal({
+        terminalId: terminal.id,
+        cols: instance.cols,
+        rows: instance.rows,
+        force: true
+      })
+      instance.focus()
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [active, terminal.id, xterm])
+
+  const attentionClass =
+    chrome === 'full' && attention === 'needsAttention' ? ' terminal-view--attention' : ''
+  const bareClass = chrome === 'bare' ? ' terminal-view--bare' : ''
 
   return (
     <article
-      className={`terminal-view${attentionClass}`}
+      className={`terminal-view${bareClass}${attentionClass}`}
       onDoubleClick={onDoubleClick}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        onDoubleClick()
-      }}
-      title="Odak modu: çift tık veya sağ tık"
+      onContextMenu={
+        onDoubleClick
+          ? (event) => {
+              event.preventDefault()
+              onDoubleClick()
+            }
+          : undefined
+      }
     >
-      <header className="terminal-view__header">
-        <span className={`terminal-view__profile terminal-view__profile--${terminal.profile}`}>
-          {PROFILE_LABELS[terminal.profile]}
-        </span>
-        <span className="terminal-view__name">{terminal.name}</span>
-        <button
-          type="button"
-          className="terminal-view__close"
-          aria-label="Terminali kapat"
-          onClick={(event) => {
-            event.stopPropagation()
-            onClose()
-          }}
-        >
-          ✕
-        </button>
-      </header>
+      {chrome === 'full' ? (
+        <header className="terminal-view__header">
+          <span className={`terminal-view__profile terminal-view__profile--${terminal.profile}`}>
+            {PROFILE_LABELS[terminal.profile]}
+          </span>
+          <span className="terminal-view__name">{terminal.name}</span>
+          <button
+            type="button"
+            className="terminal-view__close"
+            aria-label="Terminali kapat"
+            onClick={(event) => {
+              event.stopPropagation()
+              onClose()
+            }}
+          >
+            ✕
+          </button>
+        </header>
+      ) : null}
       <div className="terminal-view__body">
         {spawnError ? (
           <div className="terminal-view__error" role="alert">

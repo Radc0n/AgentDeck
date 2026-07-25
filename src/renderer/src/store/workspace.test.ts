@@ -20,11 +20,15 @@ beforeEach(() => {
   vi.useFakeTimers()
   saveWorkspaceMock.mockClear()
   ;(globalThis as unknown as { window: unknown }).window = {
-    agentdeck: { saveWorkspace: saveWorkspaceMock }
+    agentdeck: {
+      saveWorkspace: saveWorkspaceMock,
+      dismissAttentionForTerminals: vi.fn()
+    }
   }
   useWorkspaceStore.setState({
     projects: [makeProject('p1'), makeProject('p2')],
     activeProjectId: 'p1',
+    activeTerminalByProjectId: {},
     attentionByTerminalId: {},
     globalNotebooks: [],
     isNotesPanelOpen: false
@@ -137,5 +141,62 @@ describe('workspace store defterleri', () => {
     vi.runAllTimers()
     expect(saveWorkspaceMock).toHaveBeenCalledTimes(1)
     expect(saveWorkspaceMock.mock.calls[0][0].notesPanelOpen).toBe(true)
+  })
+})
+
+describe('workspace store aktif terminal sekmeleri', () => {
+  it('addTerminal yeni sekmeyi aktif yapar', () => {
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't1',
+      name: 'Grok 1',
+      profile: 'grok',
+      cwd: 'C:\\p1',
+      order: 0
+    })
+
+    expect(useWorkspaceStore.getState().activeTerminalByProjectId.p1).toBe('t1')
+    expect(useWorkspaceStore.getState().getActiveTerminalId('p1')).toBe('t1')
+  })
+
+  it('setActiveTerminal yalnızca o projedeki terminali seçer', () => {
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't1',
+      name: 'A',
+      profile: 'shell',
+      cwd: 'C:\\p1',
+      order: 0
+    })
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't2',
+      name: 'B',
+      profile: 'claude',
+      cwd: 'C:\\p1',
+      order: 1
+    })
+
+    useWorkspaceStore.getState().setActiveTerminal('p1', 't1')
+    expect(useWorkspaceStore.getState().getActiveTerminalId('p1')).toBe('t1')
+  })
+
+  it('removeTerminal aktif sekmeyi kapatınca sonrakine geçer', () => {
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't1',
+      name: 'A',
+      profile: 'shell',
+      cwd: 'C:\\p1',
+      order: 0
+    })
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't2',
+      name: 'B',
+      profile: 'claude',
+      cwd: 'C:\\p1',
+      order: 1
+    })
+    useWorkspaceStore.getState().setActiveTerminal('p1', 't1')
+    useWorkspaceStore.getState().removeTerminal('p1', 't1')
+
+    expect(useWorkspaceStore.getState().getActiveTerminalId('p1')).toBe('t2')
+    expect(useWorkspaceStore.getState().projects[0].terminals.map((t) => t.id)).toEqual(['t2'])
   })
 })

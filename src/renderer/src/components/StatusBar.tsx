@@ -1,15 +1,13 @@
 import { useWorkspaceStore } from '../store/workspace'
 
 interface StatusBarProps {
-  viewMode: 'grid' | 'focus'
   terminalCount: number
-  onToggleViewMode: () => void
+  activeTerminalName: string | null
 }
 
 export function StatusBar({
-  viewMode,
   terminalCount,
-  onToggleViewMode
+  activeTerminalName
 }: StatusBarProps): React.JSX.Element {
   const activeProject = useWorkspaceStore((state) => state.getActiveProject())
 
@@ -30,16 +28,14 @@ export function StatusBar({
       </div>
 
       <div className="status-bar__meta">
-        <span className="status-bar__count">{terminalCount} terminal</span>
-
-        <button
-          type="button"
-          className="status-bar__mode-badge"
-          disabled={!activeProject || terminalCount === 0}
-          onClick={onToggleViewMode}
-        >
-          {viewMode === 'focus' ? 'Izgara' : 'Odak'}
-        </button>
+        {activeTerminalName ? (
+          <span className="status-bar__active-tab" title="Aktif terminal">
+            {activeTerminalName}
+          </span>
+        ) : null}
+        <span className="status-bar__count">
+          {terminalCount} {terminalCount === 1 ? 'terminal' : 'terminal'}
+        </span>
       </div>
     </footer>
   )
