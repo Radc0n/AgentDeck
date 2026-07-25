@@ -11,7 +11,6 @@ function ctx(overrides: Partial<WheelContext> = {}): WheelContext {
     bufferType: 'normal',
     cellHeight: 20,
     rows: 30,
-    applicationCursorKeysMode: false,
     ...overrides
   }
 }
@@ -65,28 +64,15 @@ describe('decideWheelAction', () => {
     expect(decideWheelAction(ctx({ deltaY: 0 }))).toEqual({ kind: 'forward' })
   })
 
-  it('alternatif buffer tekerleği ok tuşuna çevirir', () => {
+  // Regresyon: alt buffer'da ok tuşu üretmek Grok'ta mesaj geçmişinde gezinmeye
+  // yol açtı. Alternatif buffer'a asla karışılmaz.
+  it('alternatif bufferda olay uygulamaya iletilir, ok tuşu üretilmez', () => {
     expect(decideWheelAction(ctx({ bufferType: 'alternate', deltaY: -60 }))).toEqual({
-      kind: 'keys',
-      data: '\x1b[A\x1b[A\x1b[A'
+      kind: 'forward'
     })
     expect(decideWheelAction(ctx({ bufferType: 'alternate', deltaY: 60 }))).toEqual({
-      kind: 'keys',
-      data: '\x1b[B\x1b[B\x1b[B'
+      kind: 'forward'
     })
-  })
-
-  it('DECCKM açıkken ok tuşları SS3 formunda gider', () => {
-    expect(
-      decideWheelAction(
-        ctx({ bufferType: 'alternate', deltaY: -20, applicationCursorKeysMode: true })
-      )
-    ).toEqual({ kind: 'keys', data: '\x1bOA' })
-  })
-
-  it('alternatif bufferda tuş sayısı tavanla sınırlanır', () => {
-    const action = decideWheelAction(ctx({ bufferType: 'alternate', deltaMode: 2, deltaY: -5 }))
-    expect(action).toEqual({ kind: 'keys', data: '\x1b[A'.repeat(24) })
   })
 
   it('tracking açık x10 modunda da normal buffer kaydırılır', () => {

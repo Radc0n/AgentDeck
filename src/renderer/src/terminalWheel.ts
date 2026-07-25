@@ -3,10 +3,14 @@ import type { Terminal } from '@xterm/xterm'
 /**
  * Tekerlek politikası.
  *
- * Grok / Claude gibi TUI'ler mouse-tracking modunu açar (`CSI ? 1000/1002/1003 h`).
- * xterm varsayılanı bu moddayken tekerleği escape dizisi olarak uygulamaya iletir;
- * uygulama bunu işlemezse scroll hiç çalışmaz. Windows Terminal / iTerm davranışı
- * ise şudur: **normal buffer'da scrollback terminalindir**, tracking ne derse desin.
+ * Mouse-tracking modu (`CSI ? 1000/1002/1003 h`) açıkken xterm varsayılanı tekerleği
+ * escape dizisi olarak uygulamaya iletir; uygulama bunu işlemezse scroll hiç çalışmaz.
+ * Windows Terminal / iTerm davranışı ise şudur: **normal buffer'da scrollback
+ * terminalindir**, tracking ne derse desin.
+ *
+ * Alternatif buffer'a (`CSI ? 1049 h`) DOKUNULMAZ. Orada scrollback zaten yoktur ve
+ * tekerleği ok tuşuna çevirmek — standart "alternate scroll" davranışı olsa da —
+ * Grok gibi ok tuşlarını mesaj geçmişi için kullanan TUI'leri bozar.
  */
 
 export type MouseTrackingMode = 'none' | 'x10' | 'vt200' | 'drag' | 'any'
@@ -21,16 +25,11 @@ export interface WheelContext {
   bufferType: BufferType
   /** Piksel deltasını satıra çevirmek için hücre yüksekliği (px) */
   cellHeight: number
-  /** Sayfa deltası ve sayfa sıçraması için görünür satır sayısı */
+  /** Sayfa deltası için görünür satır sayısı */
   rows: number
-  /** DECCKM — açıkken ok tuşları CSI yerine SS3 formunda gider */
-  applicationCursorKeysMode: boolean
 }
 
-export type WheelAction =
-  | { kind: 'forward' }
-  | { kind: 'scroll'; lines: number }
-  | { kind: 'keys'; data: string }
+export type WheelAction = { kind: 'forward' } | { kind: 'scroll'; lines: number }
 
 const DELTA_MODE_PIXEL = 0
 const DELTA_MODE_LINE = 1
@@ -38,9 +37,6 @@ const DELTA_MODE_PAGE = 2
 
 /** Hücre yüksekliği ölçülemezse: fontSize 13 × lineHeight 1.2 ≈ 16 */
 const FALLBACK_CELL_HEIGHT = 16
-
-/** Alt buffer'da tek tık en az bu kadar ok tuşu üretsin (runaway'i önlemek için tavan da var) */
-const MAX_ALT_BUFFER_KEYS = 24
 
 /** Tekerlek deltasını satır sayısına çevirir. İşaret korunur, büyüklük en az 1'dir. */
 export function wheelLines(ctx: WheelContext): number {
@@ -85,24 +81,14 @@ export function decideWheelAction(ctx: WheelContext): WheelAction {
     return { kind: 'forward' }
   }
 
-  const lines = wheelLines(ctx)
-
-  // Alternatif buffer'da scrollback yoktur; alternate-scroll sözleşmesi ok tuşudur.
+  // Alternatif buffer: scrollback yok, uygulama kendi bilsin. Karışmak Grok'ta
+  // mesaj geçmişinde gezinmeye yol açıyor.
   if (ctx.bufferType === 'alternate') {
-    const up = lines < 0
-    const key = ctx.applicationCursorKeysMode
-      ? up
-        ? '\x1bOA'
-        : '\x1bOB'
-      : up
-        ? '\x1b[A'
-        : '\x1b[B'
-    const count = Math.min(Math.abs(lines), MAX_ALT_BUFFER_KEYS)
-    return { kind: 'keys', data: key.repeat(count) }
+    return { kind: 'forward' }
   }
 
   // Normal buffer: scrollback terminalindir.
-  return { kind: 'scroll', lines }
+  return { kind: 'scroll', lines: wheelLines(ctx) }
 }
 
 function measureCellHeight(terminal: Terminal): number {
@@ -124,20 +110,14 @@ export function installWheelPolicy(terminal: Terminal): void {
       mouseTrackingMode: terminal.modes.mouseTrackingMode,
       bufferType: terminal.buffer.active.type,
       cellHeight: measureCellHeight(terminal),
-      rows: terminal.rows,
-      applicationCursorKeysMode: terminal.modes.applicationCursorKeysMode
+      rows: terminal.rows
     })
 
     if (action.kind === 'forward') {
       return true
     }
 
-    if (action.kind === 'scroll') {
-      terminal.scrollLines(action.lines)
-    } else {
-      terminal.input(action.data, true)
-    }
-
+    terminal.scrollLines(action.lines)
     // xterm işlemesin: tekerlek uygulamaya escape dizisi olarak gitmemeli.
     return false
   })
