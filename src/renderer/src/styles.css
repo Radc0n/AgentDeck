@@ -906,6 +906,14 @@ button:disabled {
   text-align: center;
 }
 
+/* Sahne içinde katman — gizli paneller DOM'da kalırken üstte durur */
+.terminal-workspace__empty--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: #0c0c0c;
+}
+
 .terminal-workspace__empty-title {
   margin: 0;
   font-size: 14px;

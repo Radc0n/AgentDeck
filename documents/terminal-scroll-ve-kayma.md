@@ -5,9 +5,10 @@
 
 ## Semptomlar
 
-1. Grok sekmesinde fare tekerleğiyle yukarı scroll çalışmıyor. Düz `shell` (PowerShell)
-   sekmesinde **çalışıyor**.
-2. Prompt en üstte sabit kalıp mesaj geldikçe aşağı doğru yürüyor.
+1. Grok sekmesinde fare tekerleğiyle yukarı scroll **ilk açılışta çalışıyor**, bir süre
+   sonra (özellikle proje değiştirip geri dönünce) ölüyor. Windows Terminal'de sorunsuz.
+2. ~~Prompt en üstte sabit kalıp mesaj geldikçe aşağı doğru yürüyor.~~
+   **Bug değil** — Grok'un kendi özelliğiymiş. Kovalanmadı.
 
 ## Kök neden — DÜZELTİLDİ
 
@@ -43,15 +44,42 @@ Grok'u etkilemiyor.
 Karar mantığı saf fonksiyon (`decideWheelAction`), `terminalWheel.test.ts` ile test edilir.
 `TerminalView.tsx` içinde `instance.open()` sonrası tek satırla bağlanır.
 
-### Açık soru
+## Asıl kök neden — mod pazarlığının replay'de kaybolması
 
-Grok, Windows Terminal'de tekerlekle kaydırılabiliyor mu? Cevap belirleyici:
+Windows Terminal'de scroll sorunsuz çalışıyor. Yani **Grok SGR mouse tekerlek
+raporlarını kendisi işliyor**; terminalin tek işi onları iletmek. AgentDeck'te de ilk
+açılışta çalışıyordu. Demek ki sorun statik yapılandırma değil, **zamanla bozulan durum**.
 
-- **Evet ise** → Grok SGR mouse raporlarını kendi işliyor. O zaman sorun bizim
-  negotiation'ımızda (muhtemelen `?1006` SGR kodlaması) ve düzeltilebilir.
-- **Hayır ise** → Grok'un kendi kısıtı, AgentDeck'in değil. Terminal tarafında
-  yapılacak bir şey yok; çözüm Grok'un kendi kaydırma tuşları veya AgentDeck
-  tarafında ayrı bir transcript yakalama olur.
+Zincir:
+
+1. `TerminalWorkspace` sadece aktif projenin terminallerini render ediyordu. Başka
+   projeye geçince `TerminalView`'lar unmount → `instance.dispose()` → `detachTerminal`.
+2. Geri dönünce sıfırdan yeni bir `XTerm` → `attachTerminal` → tampon replay.
+3. `ipc.ts` `appendTerminalOutput` bir **halka tampon**: sadece son
+   `MAX_TERMINAL_BUFFER_CHARS` (512.000) karakteri tutar, baştan keser.
+4. Grok mod pazarlığını (`?1049h`, `?1006h`, `?1002h`) **başlangıçta bir kez** gönderir.
+   Her karede kendini çizen bir TUI 512K'yı dakikalar içinde doldurur.
+5. O andan sonra replay o dizileri içermez. Yeni xterm `mouseTrackingMode: 'none'` ve
+   `buffer.active.type: 'normal'` ile doğar — PTY tarafındaki Grok ise ikisinin de açık
+   olduğuna inanmaya devam eder.
+6. xterm tekerleği SGR mouse raporu olarak iletmeyi bırakır. Scroll ölür.
+
+### Çözüm
+
+`TerminalWorkspace.tsx` — **tüm projelerin panelleri DOM'da kalır**, sadece görünürlük
+değişir. Sekmeler için zaten yapılan şey (`--idle` panelleri canlı tutmak) projelere de
+uygulandı. Böylece replay'e hiç ihtiyaç kalmaz; modlar, scrollback, imleç ve renk durumu
+korunur.
+
+Yan fayda: gizli projelerin terminalleri artık canlı veri alıyor (`attachedTerminals`
+hepsini kapsıyor), tampona bağımlılık ilk mount'a iniyor.
+
+### Kalan açık
+
+Renderer yeniden yüklenirse (`location.reload()`, dev HMR) tüm xterm örnekleri yine
+sıfırlanır ve tampon replay edilir. Tampon taşmışsa modlar yine kaybolur. Nadir bir yol
+(kullanıcı normalde reload yapmaz) olduğu için şimdilik yapılmadı. Gerekirse çözümü:
+main process'te açık DEC private modları takip edip attach'ta replay'in önüne eklemek.
 
 ## Kök neden (2 — hipotez, ölçülüyor)
 
