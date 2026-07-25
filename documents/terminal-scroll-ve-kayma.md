@@ -9,16 +9,23 @@
    sekmesinde **çalışıyor**.
 2. Prompt en üstte sabit kalıp mesaj geldikçe aşağı doğru yürüyor.
 
-## Kök neden (1 — doğrulandı)
+## Kök neden — DÜZELTİLDİ
 
-Grok gibi Ink tabanlı TUI'ler mouse-tracking modunu açar (`CSI ? 1000/1002/1003 h`).
-xterm.js varsayılanı bu moddayken tekerleği viewport kaydırmak yerine escape dizisi
-olarak uygulamaya iletir. Grok bunu işlemediği için hiçbir şey olmaz.
+İlk teşhis yanlıştı. Doğrusu: **Grok alternatif ekran arabelleğinde çalışıyor**
+(`CSI ? 1049 h`).
 
-Windows Terminal / iTerm davranışı farklıdır: **normal buffer'da scrollback terminalindir**,
-mouse tracking ne derse desin.
+Bu belirleyici. **Alternatif buffer'da terminal scrollback'i tanımı gereği yoktur** —
+xterm.js'te de, Windows Terminal'de de, iTerm'de de. Uygulama ekranın tamamına sahiptir
+ve geçmişi kendi yönetir. Yani "tekerlekle yukarı çıkma" ancak Grok kendi implemente
+ederse olur; terminalin yapabileceği bir şey değildir.
 
-### Çözüm
+### Yanlış deneme (kayda geçsin, tekrarlanmasın)
+
+Alt buffer'da tekerleği ok tuşuna çevirdik — standart "alternate scroll" davranışı.
+**Patladı:** Grok ok tuşlarını mesaj geçmişinde gezinme olarak yorumluyor, tekerlek
+konuşma geçmişini karıştırdı. Ink tabanlı TUI'lerde alternate-scroll varsayılamaz.
+
+### Şu anki davranış
 
 `src/renderer/src/terminalWheel.ts` — `attachCustomWheelEventHandler` ile politika katmanı.
 
@@ -27,11 +34,24 @@ mouse tracking ne derse desin.
 | `Shift` basılı | uygulamaya ilet (kaçış kapısı) |
 | `mouseTrackingMode === 'none'` | xterm varsayılanı |
 | `deltaY === 0` | xterm varsayılanı |
-| Normal buffer + tracking açık | `terminal.scrollLines()` — **asıl düzeltme** |
-| Alternatif buffer + tracking açık | ok tuşuna çevir (DECCKM'ye göre `CSI` / `SS3`) |
+| **Alternatif buffer** | **xterm varsayılanı — asla karışma** |
+| Normal buffer + tracking açık | `terminal.scrollLines()` |
+
+Normal buffer dalı, alt buffer kullanmayan TUI'ler için hâlâ geçerli bir iyileştirme.
+Grok'u etkilemiyor.
 
 Karar mantığı saf fonksiyon (`decideWheelAction`), `terminalWheel.test.ts` ile test edilir.
 `TerminalView.tsx` içinde `instance.open()` sonrası tek satırla bağlanır.
+
+### Açık soru
+
+Grok, Windows Terminal'de tekerlekle kaydırılabiliyor mu? Cevap belirleyici:
+
+- **Evet ise** → Grok SGR mouse raporlarını kendi işliyor. O zaman sorun bizim
+  negotiation'ımızda (muhtemelen `?1006` SGR kodlaması) ve düzeltilebilir.
+- **Hayır ise** → Grok'un kendi kısıtı, AgentDeck'in değil. Terminal tarafında
+  yapılacak bir şey yok; çözüm Grok'un kendi kaydırma tuşları veya AgentDeck
+  tarafında ayrı bir transcript yakalama olur.
 
 ## Kök neden (2 — hipotez, ölçülüyor)
 
