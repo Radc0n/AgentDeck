@@ -1,5 +1,6 @@
 import type { Terminal } from '@xterm/xterm'
 import { useEffect } from 'react'
+import { sniffModes } from '../terminalDebug'
 
 export function useTerminalIO(terminalId: string, terminal: Terminal | null): void {
   useEffect(() => {
@@ -16,6 +17,8 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
       if (event.terminalId !== terminalId) {
         return
       }
+
+      sniffModes(terminalId, event.data)
 
       if (!liveEnabled) {
         pendingLive.push(event.data)

@@ -5,7 +5,19 @@ import { useEffect, useRef, useState } from 'react'
 import type { Terminal, TerminalProfile } from '../global'
 import { useTerminalIO } from '../hooks/useTerminalIO'
 import { useWorkspaceStore } from '../store/workspace'
+import { logGeometry } from '../terminalDebug'
 import { DEFAULT_XTERM_OPTIONS } from '../terminalTheme'
+import { installWheelPolicy } from '../terminalWheel'
+
+/** xterm'in ölçtüğü hücre yüksekliği (px) — public API'de yok. */
+function readCellHeight(instance: XTerm): number {
+  const core = (
+    instance as unknown as {
+      _core?: { _renderService?: { dimensions?: { css?: { cell?: { height?: number } } } } }
+    }
+  )._core
+  return core?._renderService?.dimensions?.css?.cell?.height ?? 0
+}
 
 const PROFILE_LABELS: Record<TerminalProfile, string> = {
   grok: 'Grok',
@@ -73,6 +85,8 @@ export function TerminalView({
 
     instance.loadAddon(fitAddon)
     instance.open(container)
+    // Tekerlek: mouse-tracking açık TUI'lerde bile scrollback terminalin olsun.
+    installWheelPolicy(instance)
     setXterm(instance)
 
     let fitFrame = 0
@@ -87,28 +101,29 @@ export function TerminalView({
       const beforeRows = instance.rows
       fitAddon.fit()
 
+      const fittedRows = instance.rows
+      const cellHeight = readCellHeight(instance)
       const screenEl = instance.element?.querySelector('.xterm-screen')
       const screenRect = screenEl?.getBoundingClientRect()
       if (screenRect && rect.height > 0) {
         const overflow = screenRect.height - rect.height
-        if (overflow > 1) {
-          const core = (
-            instance as unknown as {
-              _core: {
-                _renderService: { dimensions: { css: { cell: { height: number } } } }
-              }
-            }
-          )._core
-          const cellHeight = core._renderService.dimensions.css.cell.height
-          if (cellHeight > 0) {
-            const extraRows = Math.ceil(overflow / cellHeight)
-            const correctedRows = Math.max(1, instance.rows - extraRows)
-            if (correctedRows !== instance.rows) {
-              instance.resize(instance.cols, correctedRows)
-            }
+        if (overflow > 1 && cellHeight > 0) {
+          const extraRows = Math.ceil(overflow / cellHeight)
+          const correctedRows = Math.max(1, instance.rows - extraRows)
+          if (correctedRows !== instance.rows) {
+            instance.resize(instance.cols, correctedRows)
           }
         }
       }
+
+      logGeometry(terminal.id, {
+        fittedRows,
+        finalRows: instance.rows,
+        cols: instance.cols,
+        containerHeight: rect.height,
+        screenHeight: screenRect?.height ?? 0,
+        cellHeight
+      })
 
       if (instance.cols === beforeCols && instance.rows === beforeRows) {
         return
