@@ -1,3 +1,4 @@
+import agentdeckIcon from '../assets/agentdeck-icon.png'
 import { AddTerminalButton } from './AddTerminalButton'
 import { ProjectTabs } from './ProjectTabs'
 import { useWorkspaceStore } from '../store/workspace'
@@ -9,7 +10,14 @@ export function TopBar(): React.JSX.Element {
   return (
     <header className="top-bar">
       <div className="top-bar__logo" aria-label="AgentDeck">
-        <span className="top-bar__logo-mark">◆</span>
+        <img
+          className="top-bar__logo-mark"
+          src={agentdeckIcon}
+          alt=""
+          width={22}
+          height={22}
+          draggable={false}
+        />
         <span className="top-bar__logo-text">AgentDeck</span>
       </div>
 

@@ -94,6 +94,53 @@ describe('workspace store Diğer rafı', () => {
   })
 })
 
+describe('workspace store terminal sırası', () => {
+  it('reorderTerminals sekmeleri yeniden sıralar ve order yazar', () => {
+    useWorkspaceStore.setState({
+      projects: [
+        {
+          ...makeProject('p1'),
+          terminals: [
+            { id: 't0', name: 'A', profile: 'shell', cwd: 'C:\\p1', order: 0 },
+            { id: 't1', name: 'B', profile: 'shell', cwd: 'C:\\p1', order: 1 },
+            { id: 't2', name: 'C', profile: 'shell', cwd: 'C:\\p1', order: 2 }
+          ]
+        }
+      ],
+      activeProjectId: 'p1'
+    })
+
+    // A'yı sona: from 0 → slot 3 → [B, C, A]
+    useWorkspaceStore.getState().reorderTerminals('p1', 0, 3)
+
+    const terminals = useWorkspaceStore.getState().projects[0].terminals
+    expect(terminals.map((t) => t.id)).toEqual(['t1', 't2', 't0'])
+    expect(terminals.map((t) => t.order)).toEqual([0, 1, 2])
+  })
+
+  it('aynı slot no-op', () => {
+    useWorkspaceStore.setState({
+      projects: [
+        {
+          ...makeProject('p1'),
+          terminals: [
+            { id: 't0', name: 'A', profile: 'shell', cwd: 'C:\\p1', order: 0 },
+            { id: 't1', name: 'B', profile: 'shell', cwd: 'C:\\p1', order: 1 }
+          ]
+        }
+      ],
+      activeProjectId: 'p1'
+    })
+
+    useWorkspaceStore.getState().reorderTerminals('p1', 1, 2)
+
+    expect(useWorkspaceStore.getState().projects[0].terminals.map((t) => t.id)).toEqual([
+      't0',
+      't1'
+    ])
+  })
+})
+
 describe('workspace store defterleri', () => {
   it('createGlobalNotebook ekler ve persist tetikler', () => {
     const id = useWorkspaceStore.getState().createGlobalNotebook('Genel defter')

@@ -139,9 +139,14 @@ button:disabled {
 }
 
 .top-bar__logo-mark {
-  color: var(--primary);
-  font-size: 1.1rem;
-  line-height: 1;
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 5px;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .top-bar__logo-text {
@@ -971,7 +976,7 @@ button:disabled {
 .terminal-tabs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   height: var(--terminal-tabs-height);
   min-height: var(--terminal-tabs-height);
   padding: 0 8px 0 6px;
@@ -984,22 +989,25 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.terminal-tabs__scroll {
+/* Sadece sekmeler scroll; + komşu ve overflow dışında (menü kesilmesin) */
+.terminal-tabs__list {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  /* + ve meta için yer bırak; aksi halde + alta itilir */
+  max-width: calc(100% - 88px);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
 }
 
-.terminal-tabs__scroll::-webkit-scrollbar {
+.terminal-tabs__list::-webkit-scrollbar {
   height: 4px;
 }
 
-.terminal-tabs__scroll::-webkit-scrollbar-thumb {
+.terminal-tabs__list::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
 }
@@ -1011,6 +1019,27 @@ button:disabled {
   flex-shrink: 0;
   max-width: 200px;
   min-width: 96px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.terminal-tabs__item--dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.terminal-tabs__item:active {
+  cursor: grabbing;
+}
+
+.terminal-tabs__insertion-line {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 2px;
+  margin: 4px 0;
+  border-radius: 1px;
+  background: var(--primary-container);
+  pointer-events: none;
 }
 
 .terminal-tabs__tab {
@@ -1148,6 +1177,7 @@ button:disabled {
 .terminal-tabs__add {
   position: relative;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .terminal-tabs__add-btn {
@@ -1214,7 +1244,7 @@ button:disabled {
 
 .terminal-tabs__meta {
   flex-shrink: 0;
-  margin-left: 4px;
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;

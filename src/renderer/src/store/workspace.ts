@@ -96,6 +96,8 @@ export interface WorkspaceStoreState {
   reorderMainProjects: (fromMainIndex: number, toMainSlot: number) => void
   addTerminal: (projectId: string, terminal: Terminal) => void
   removeTerminal: (projectId: string, terminalId: string) => void
+  /** Proje içi terminal sekmelerini soldan sağa yeniden sıralar; order alanlarını 0..n yazar */
+  reorderTerminals: (projectId: string, fromIndex: number, toSlot: number) => void
   setActiveTerminal: (projectId: string, terminalId: string) => void
   setAttention: (terminalId: string, state: AttentionState) => void
   createGlobalNotebook: (name: string) => string
@@ -373,6 +375,51 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
           [projectId]: terminal.id
         }
       }
+    })
+  },
+
+  reorderTerminals: (projectId, fromIndex, toSlot) => {
+    set((state) => {
+      const project = state.projects.find((item) => item.id === projectId)
+      if (!project) {
+        return state
+      }
+
+      const sorted = [...project.terminals].sort((a, b) => a.order - b.order)
+      if (
+        fromIndex < 0 ||
+        fromIndex >= sorted.length ||
+        toSlot < 0 ||
+        toSlot > sorted.length
+      ) {
+        return state
+      }
+
+      let insertAt = toSlot
+      if (fromIndex < toSlot) {
+        insertAt = toSlot - 1
+      }
+      if (fromIndex === insertAt) {
+        return state
+      }
+
+      const next = [...sorted]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(insertAt, 0, moved)
+      const reindexed = next.map((terminal, order) =>
+        terminal.order === order ? terminal : { ...terminal, order }
+      )
+
+      const projects = state.projects.map((item) =>
+        item.id === projectId ? { ...item, terminals: reindexed } : item
+      )
+      schedulePersist(
+        projects,
+        state.activeProjectId,
+        state.globalNotebooks,
+        state.isNotesPanelOpen
+      )
+      return { projects }
     })
   },
 
