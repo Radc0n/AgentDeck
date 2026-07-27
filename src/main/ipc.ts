@@ -1,19 +1,23 @@
-import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron'
-import { existsSync } from 'fs'
+import {
+  BrowserWindow,
+  Notification,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+  type WebContents
+} from 'electron'
 import { basename } from 'path'
 import {
   IPC_CHANNELS,
+  type IpcChannel,
   type AddProjectResult,
   type AttentionChangedEvent,
-  type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
   type TerminalDataEvent,
   type TerminalExitEvent,
-  type TerminalIdRequest,
-  type TerminalResizeRequest,
-  type TerminalSpawnErrorEvent,
-  type TerminalWriteRequest
+  type TerminalSpawnErrorEvent
 } from '../shared/ipc'
 import type { TerminalProfile, Workspace } from '../shared/types'
 import {
@@ -25,10 +29,20 @@ import {
   type AttentionEvent
 } from './attentionMonitor'
 import { containsRealBell, stripRealBell } from './bellDetect'
+import {
+  validateAttentionDismissRequest,
+  validateCreateTerminalRequest,
+  validateProjectPath,
+  validateTerminalIdRequest,
+  validateTerminalResizeRequest,
+  validateTerminalWriteRequest,
+  validateWorkspace
+} from './ipcValidation'
 import { resolveProfile } from './profiles'
 import * as ptyManager from './ptyManager'
 import { loadWorkspace, saveWorkspace } from './sessionStore'
 
+const trustedRendererIds = new Set<number>()
 const attentionByTerminal = new Map<string, AttentionContext>()
 // Her terminalin profili. Bildirim (needsAttention) yalnızca ajan profilli terminallere
 // (grok/claude/cursor/codex/antigravity/custom) izin verilir; düz "shell" başıboş bir bell (\x07)
@@ -44,6 +58,33 @@ const terminalOutputBuffers = new Map<string, string>()
 const MAX_TERMINAL_BUFFER_CHARS = 512_000
 let attentionTimer: ReturnType<typeof setInterval> | null = null
 let ptyCallbacksRegistered = false
+
+export function trustRenderer(webContents: WebContents): void {
+  const rendererId = webContents.id
+  trustedRendererIds.add(rendererId)
+  webContents.once('destroyed', () => {
+    trustedRendererIds.delete(rendererId)
+  })
+}
+
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  if (
+    !trustedRendererIds.has(event.sender.id) ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error('Yetkisiz IPC isteği.')
+  }
+}
+
+function secureHandle<TArgs extends unknown[], TResult>(
+  channel: IpcChannel,
+  listener: (event: IpcMainInvokeEvent, ...args: TArgs) => TResult
+): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedSender(event)
+    return listener(event, ...(args as TArgs))
+  })
+}
 
 function isAgentTerminal(terminalId: string): boolean {
   const profile = terminalProfiles.get(terminalId)
@@ -263,9 +304,10 @@ export function registerIpcHandlers(): void {
   ensurePtyCallbacks()
   startAttentionPolling()
 
-  ipcMain.handle(
+  secureHandle(
     IPC_CHANNELS.TERMINAL_CREATE,
-    (_event, request: CreateTerminalRequest): CreateTerminalResult => {
+    (_event, rawRequest: unknown): CreateTerminalResult => {
+      const request = validateCreateTerminalRequest(rawRequest)
       try {
         if (ptyManager.hasTerminal(request.id)) {
           if (!attentionByTerminal.has(request.id)) {
@@ -285,7 +327,8 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_ATTACH, (_event, request: TerminalIdRequest) => {
+  secureHandle(IPC_CHANNELS.TERMINAL_ATTACH, (_event, rawRequest: unknown) => {
+    const request = validateTerminalIdRequest(rawRequest)
     const reattach = pendingReattachTerminals.has(request.terminalId)
     if (reattach) {
       pendingReattachTerminals.delete(request.terminalId)
@@ -298,7 +341,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_DETACH, (_event, request: TerminalIdRequest): void => {
+  secureHandle(IPC_CHANNELS.TERMINAL_DETACH, (_event, rawRequest: unknown): void => {
+    const request = validateTerminalIdRequest(rawRequest)
     if (!attachedTerminals.delete(request.terminalId)) {
       return
     }
@@ -308,7 +352,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_WRITE, (_event, request: TerminalWriteRequest): void => {
+  secureHandle(IPC_CHANNELS.TERMINAL_WRITE, (_event, rawRequest: unknown): void => {
+    const request = validateTerminalWriteRequest(rawRequest)
     try {
       ptyManager.write(request.terminalId, request.data)
     } catch (error) {
@@ -316,7 +361,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_RESIZE, (_event, request: TerminalResizeRequest): void => {
+  secureHandle(IPC_CHANNELS.TERMINAL_RESIZE, (_event, rawRequest: unknown): void => {
+    const request = validateTerminalResizeRequest(rawRequest)
     try {
       ptyManager.resize(request.terminalId, request.cols, request.rows, {
         force: request.force === true
@@ -326,7 +372,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_KILL, (_event, request: TerminalIdRequest): void => {
+  secureHandle(IPC_CHANNELS.TERMINAL_KILL, (_event, rawRequest: unknown): void => {
+    const request = validateTerminalIdRequest(rawRequest)
     // PTY yoksa bile (crash sonrası) UI kapatabilsin; kill idempotent.
     try {
       ptyManager.kill(request.terminalId)
@@ -342,27 +389,33 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.ATTENTION_RESET_SESSION, (): void => {
+  secureHandle(IPC_CHANNELS.ATTENTION_RESET_SESSION, (): void => {
     resetAttentionSession()
   })
 
-  ipcMain.handle(
+  secureHandle(
     IPC_CHANNELS.ATTENTION_DISMISS_TERMINALS,
-    (_event, request: AttentionDismissRequest): void => {
+    (_event, rawRequest: unknown): void => {
+      const request = validateAttentionDismissRequest(rawRequest)
       dismissAttentionForTerminals(request.terminalIds)
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.TERMINAL_REPORT_FOCUS, (_event, request: TerminalIdRequest): void => {
-    if (!attentionByTerminal.has(request.terminalId)) {
-      return
+  secureHandle(
+    IPC_CHANNELS.TERMINAL_REPORT_FOCUS,
+    (_event, rawRequest: unknown): void => {
+      const request = validateTerminalIdRequest(rawRequest)
+      if (!attentionByTerminal.has(request.terminalId)) {
+        return
+      }
+      handleAttentionEvent(request.terminalId, 'focus')
     }
-    handleAttentionEvent(request.terminalId, 'focus')
-  })
+  )
 
-  ipcMain.handle(
+  secureHandle(
     IPC_CHANNELS.TERMINAL_REPORT_USER_INPUT,
-    (_event, request: TerminalIdRequest): void => {
+    (_event, rawRequest: unknown): void => {
+      const request = validateTerminalIdRequest(rawRequest)
       if (!attentionByTerminal.has(request.terminalId)) {
         return
       }
@@ -370,7 +423,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.WORKSPACE_LOAD, (): Workspace => {
+  secureHandle(IPC_CHANNELS.WORKSPACE_LOAD, (): Workspace => {
     try {
       return loadWorkspace()
     } catch (error) {
@@ -378,7 +431,8 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.WORKSPACE_SAVE, (_event, workspace: Workspace): void => {
+  secureHandle(IPC_CHANNELS.WORKSPACE_SAVE, (_event, rawWorkspace: unknown): void => {
+    const workspace = validateWorkspace(rawWorkspace)
     try {
       saveWorkspace(workspace)
     } catch (error) {
@@ -386,7 +440,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_ADD, async (): Promise<AddProjectResult> => {
+  secureHandle(IPC_CHANNELS.PROJECT_ADD, async (): Promise<AddProjectResult> => {
     const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
 
     const result = await dialog.showOpenDialog(parentWindow ?? undefined, {
@@ -405,30 +459,30 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_CHECK_PATH, (_event, path: string): boolean => {
-    if (typeof path !== 'string' || path.trim() === '') {
+  secureHandle(IPC_CHANNELS.PROJECT_CHECK_PATH, (_event, rawPath: unknown): boolean => {
+    let path: string
+    try {
+      path = validateProjectPath(rawPath)
+    } catch {
       return false
     }
 
     try {
-      return existsSync(path)
+      validateProjectPath(path, true)
+      return true
     } catch {
       return false
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER, async (_event, path: string): Promise<void> => {
-    if (typeof path !== 'string' || path.trim() === '') {
-      throw new Error('Geçersiz proje yolu.')
+  secureHandle(
+    IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER,
+    async (_event, rawPath: unknown): Promise<void> => {
+      const path = validateProjectPath(rawPath, true)
+      const errorMessage = await shell.openPath(path)
+      if (errorMessage) {
+        throw new Error(errorMessage)
+      }
     }
-
-    if (!existsSync(path)) {
-      throw new Error('Proje klasörüne erişilemiyor.')
-    }
-
-    const errorMessage = await shell.openPath(path)
-    if (errorMessage) {
-      throw new Error(errorMessage)
-    }
-  })
+  )
 }
