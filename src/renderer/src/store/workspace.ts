@@ -289,13 +289,6 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
         return state
       }
 
-      const project = state.projects.find((item) => item.id === projectId)
-      if (project) {
-        void window.agentdeck.dismissAttentionForTerminals({
-          terminalIds: project.terminals.map((terminal) => terminal.id)
-        })
-      }
-
       schedulePersist(
         state.projects,
         projectId,

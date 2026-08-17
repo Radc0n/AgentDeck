@@ -1,8 +1,24 @@
 import type { Terminal } from '@xterm/xterm'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { sniffModes } from '../terminalDebug'
+import { isEngagingUserInput } from '../terminalInput'
 
-export function useTerminalIO(terminalId: string, terminal: Terminal | null): void {
+export function useTerminalIO(
+  terminalId: string,
+  terminal: Terminal | null,
+  active = true
+): void {
+  const focusedRef = useRef(false)
+
+  useEffect(() => {
+    if (active) {
+      return
+    }
+
+    focusedRef.current = false
+    void window.agentdeck.reportTerminalBlur({ terminalId })
+  }, [active, terminalId])
+
   useEffect(() => {
     if (!terminal) {
       return
@@ -10,7 +26,6 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
 
     let liveEnabled = false
     let attachSettled = false
-    let terminalFocused = false
     const pendingLive: string[] = []
 
     const unsubData = window.agentdeck.onTerminalData((event) => {
@@ -87,18 +102,19 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
 
     const dataDisposable = terminal.onData((data) => {
       void window.agentdeck.writeTerminal({ terminalId, data })
-      if (attachSettled && terminalFocused && data.length > 0) {
+      if (attachSettled && focusedRef.current && isEngagingUserInput(data)) {
         void window.agentdeck.reportTerminalUserInput({ terminalId })
       }
     })
 
     const reportFocus = (): void => {
-      terminalFocused = true
+      focusedRef.current = true
       void window.agentdeck.reportTerminalFocus({ terminalId })
     }
 
     const reportBlur = (): void => {
-      terminalFocused = false
+      focusedRef.current = false
+      void window.agentdeck.reportTerminalBlur({ terminalId })
     }
 
     const element = terminal.element
@@ -107,6 +123,8 @@ export function useTerminalIO(terminalId: string, terminal: Terminal | null): vo
     element?.addEventListener('mousedown', reportFocus)
 
     return () => {
+      focusedRef.current = false
+      void window.agentdeck.reportTerminalBlur({ terminalId })
       void window.agentdeck.detachTerminal({ terminalId })
       unsubData()
       unsubExit()

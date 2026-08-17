@@ -33,6 +33,8 @@ export function buildTerminalEnv(): Record<string, string> {
   env.FORCE_COLOR = '3'
   env.CLICOLOR = '1'
   env.CLICOLOR_FORCE = '1'
+  env.TERM_PROGRAM = 'AgentDeck'
+  env.AGENTDECK = '1'
 
   const extras = extraPathDirs()
   if (extras.length > 0) {

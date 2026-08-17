@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   TERMINAL_RESIZE: 'agentdeck:terminal:resize',
   TERMINAL_KILL: 'agentdeck:terminal:kill',
   TERMINAL_REPORT_FOCUS: 'agentdeck:terminal:reportFocus',
+  TERMINAL_REPORT_BLUR: 'agentdeck:terminal:reportBlur',
   TERMINAL_REPORT_USER_INPUT: 'agentdeck:terminal:reportUserInput',
   WORKSPACE_LOAD: 'agentdeck:workspace:load',
   WORKSPACE_SAVE: 'agentdeck:workspace:save',
@@ -98,6 +99,7 @@ export interface AgentDeckAPI {
   attachTerminal: (request: TerminalIdRequest) => Promise<TerminalAttachResult>
   detachTerminal: (request: TerminalIdRequest) => Promise<void>
   reportTerminalFocus: (request: TerminalIdRequest) => Promise<void>
+  reportTerminalBlur: (request: TerminalIdRequest) => Promise<void>
   reportTerminalUserInput: (request: TerminalIdRequest) => Promise<void>
   resetAttentionSession: () => Promise<void>
   dismissAttentionForTerminals: (request: AttentionDismissRequest) => Promise<void>

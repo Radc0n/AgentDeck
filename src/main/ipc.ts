@@ -28,7 +28,8 @@ import {
   type AttentionContext,
   type AttentionEvent
 } from './attentionMonitor'
-import { containsRealBell, stripRealBell } from './bellDetect'
+import { stripRealBell } from './bellDetect'
+import { classifyPtyOutput } from './ptyOutput'
 import {
   validateAttentionDismissRequest,
   validateCreateTerminalRequest,
@@ -53,6 +54,7 @@ const terminalProfiles = new Map<string, TerminalProfile>()
 // oluşan spam'i önler.
 const notifiedTerminals = new Set<string>()
 const attachedTerminals = new Set<string>()
+let focusedTerminalId: string | null = null
 const pendingReattachTerminals = new Set<string>()
 const terminalOutputBuffers = new Map<string, string>()
 const MAX_TERMINAL_BUFFER_CHARS = 512_000
@@ -148,7 +150,7 @@ function maybeNotifyAttention(terminalId: string): void {
   const notification = new Notification({
     title: 'AgentDeck',
     body: 'Bir terminal dikkatinizi bekliyor.',
-    silent: true
+    silent: false
   })
   notification.show()
 }
@@ -186,9 +188,8 @@ function updateAttentionState(
   if (!previous || previous.state !== next.state) {
     emitAttentionChanged({ terminalId, state: next.state })
 
-    // OS bildirimi yalnızca bell (\x07) ile tetiklenir.
-    // In-app rozet: bell veya kullanıcı girdisinden sonra gelen ajan yanıtının susması.
-    if (next.state === 'needsAttention' && options.notify) {
+    // OS toast pencere arkadayken; in-app ses renderer'da. Kaynak bell veya sezgi olabilir.
+    if (next.state === 'needsAttention' && options.notify !== false) {
       maybeNotifyAttention(terminalId)
     }
   }
@@ -218,9 +219,7 @@ function handleAttentionEvent(terminalId: string, event: AttentionEvent): void {
 
   const current = attentionByTerminal.get(terminalId) ?? createAttentionContext()
   const next = applyAttentionEvent(current, event, Date.now())
-  updateAttentionState(terminalId, next, {
-    notify: event === 'bell'
-  })
+  updateAttentionState(terminalId, next)
 }
 
 function ensurePtyCallbacks(): void {
@@ -236,11 +235,10 @@ function ensurePtyCallbacks(): void {
       sendTerminalData(terminalId, data)
     }
 
-    // Bildirim noktası yalnızca ajan terminalinin gönderdiği gerçek bell ile yanar.
-    // Düz shell'in başıboş beep'i 'output' sayılır ve noktayı yakmaz.
-    if (containsRealBell(data) && isAgentTerminal(terminalId)) {
+    const kind = classifyPtyOutput(data)
+    if (kind === 'notify' && isAgentTerminal(terminalId)) {
       handleAttentionEvent(terminalId, 'bell')
-    } else {
+    } else if (kind === 'content') {
       handleAttentionEvent(terminalId, 'output')
     }
   })
@@ -249,6 +247,9 @@ function ensurePtyCallbacks(): void {
     attentionByTerminal.delete(terminalId)
     terminalProfiles.delete(terminalId)
     notifiedTerminals.delete(terminalId)
+    if (focusedTerminalId === terminalId) {
+      focusedTerminalId = null
+    }
     attachedTerminals.delete(terminalId)
     pendingReattachTerminals.delete(terminalId)
     terminalOutputBuffers.delete(terminalId)
@@ -273,7 +274,8 @@ function startAttentionPolling(): void {
       if (!isAgentTerminal(terminalId)) {
         continue
       }
-      const next = evaluateAttentionTimeout(context, now)
+      const suppressNotify = focusedTerminalId === terminalId && isWindowFocused()
+      const next = evaluateAttentionTimeout(context, now, {}, { suppressNotify })
       if (next.state !== context.state) {
         updateAttentionState(terminalId, next)
       } else {
@@ -383,6 +385,9 @@ export function registerIpcHandlers(): void {
       attentionByTerminal.delete(request.terminalId)
       terminalProfiles.delete(request.terminalId)
       notifiedTerminals.delete(request.terminalId)
+      if (focusedTerminalId === request.terminalId) {
+        focusedTerminalId = null
+      }
       attachedTerminals.delete(request.terminalId)
       pendingReattachTerminals.delete(request.terminalId)
       terminalOutputBuffers.delete(request.terminalId)
@@ -405,10 +410,31 @@ export function registerIpcHandlers(): void {
     IPC_CHANNELS.TERMINAL_REPORT_FOCUS,
     (_event, rawRequest: unknown): void => {
       const request = validateTerminalIdRequest(rawRequest)
+      const alreadyFocused = focusedTerminalId === request.terminalId
+      focusedTerminalId = request.terminalId
       if (!attentionByTerminal.has(request.terminalId)) {
         return
       }
+      // Aynı terminalde tekrarlayan mousedown soğumayı sıfırlamasın; yalnızca
+      // ilk odak (veya rozeti temizlemek) focus olayı üretsin.
+      if (alreadyFocused) {
+        const current = attentionByTerminal.get(request.terminalId)
+        if (current?.state === 'needsAttention') {
+          handleAttentionEvent(request.terminalId, 'focus')
+        }
+        return
+      }
       handleAttentionEvent(request.terminalId, 'focus')
+    }
+  )
+
+  secureHandle(
+    IPC_CHANNELS.TERMINAL_REPORT_BLUR,
+    (_event, rawRequest: unknown): void => {
+      const request = validateTerminalIdRequest(rawRequest)
+      if (focusedTerminalId === request.terminalId) {
+        focusedTerminalId = null
+      }
     }
   )
 

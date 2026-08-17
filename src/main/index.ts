@@ -94,7 +94,9 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
-      allowRunningInsecureContent: false
+      allowRunningInsecureContent: false,
+      // Bildirim sesi kullanıcı jesti olmadan da çalsın (arka plan sekmesi).
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
 

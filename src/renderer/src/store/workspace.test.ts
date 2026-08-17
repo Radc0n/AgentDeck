@@ -246,4 +246,22 @@ describe('workspace store aktif terminal sekmeleri', () => {
     expect(useWorkspaceStore.getState().getActiveTerminalId('p1')).toBe('t2')
     expect(useWorkspaceStore.getState().projects[0].terminals.map((t) => t.id)).toEqual(['t2'])
   })
+
+  it('setActiveProject bekleyen terminallerin dikkatini silmez', () => {
+    const dismiss = window.agentdeck.dismissAttentionForTerminals as ReturnType<typeof vi.fn>
+    dismiss.mockClear()
+
+    useWorkspaceStore.getState().addTerminal('p1', {
+      id: 't1',
+      name: 'Grok',
+      profile: 'grok',
+      cwd: 'C:\\p1',
+      order: 0
+    })
+
+    useWorkspaceStore.getState().setActiveProject('p2')
+
+    expect(dismiss).not.toHaveBeenCalled()
+    expect(useWorkspaceStore.getState().activeProjectId).toBe('p2')
+  })
 })

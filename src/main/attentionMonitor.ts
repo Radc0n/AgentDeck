@@ -4,7 +4,7 @@ export type AttentionEvent = 'output' | 'bell' | 'focus' | 'userInput'
 
 export interface AttentionContext {
   state: AttentionState
-  /** Son ajan çıktısı zamanı; sessizlik ölçümü yalnızca buna dayanır. */
+  /** Sessizlik saati (ajan çıktısı veya soğumadaki TUI gürültüsü). */
   lastOutputAt: number | null
   /** Son kullanıcı girdisi zamanı. */
   lastUserInputAt: number | null
@@ -14,15 +14,25 @@ export interface AttentionContext {
   hasUserEngaged: boolean
   /** Bu oturumda yanıt bildirimi gösterildi mi (focus ile sıfırlanır). */
   responseNotified: boolean
+  /** Son odak zamanı; sekme dönüşündeki TUI yeniden çizimini yoksaymak için. */
+  lastFocusAt: number | null
 }
 
 export interface AttentionConfig {
   /** Ajan yanıt verdikten sonra bu süre boyunca çıktı gelmezse bildirim yanar. */
   busyTimeoutMs: number
+  /** Odak sonrası TUI gürültüsünün yeni tur sayılmayacağı süre. */
+  focusCooldownMs: number
+}
+
+export interface AttentionTimeoutOptions {
+  /** Kullanıcı bu terminale bakıyorsa sezgisel rozet üretilmesin. */
+  suppressNotify?: boolean
 }
 
 export const DEFAULT_ATTENTION_CONFIG: AttentionConfig = {
-  busyTimeoutMs: 10_000
+  busyTimeoutMs: 10_000,
+  focusCooldownMs: 2_500
 }
 
 export function createAttentionContext(): AttentionContext {
@@ -32,7 +42,15 @@ export function createAttentionContext(): AttentionContext {
     lastUserInputAt: null,
     lastAgentOutputAt: null,
     hasUserEngaged: false,
-    responseNotified: false
+    responseNotified: false,
+    lastFocusAt: null
+  }
+}
+
+function resolveConfig(config: Partial<AttentionConfig> = {}): AttentionConfig {
+  return {
+    ...DEFAULT_ATTENTION_CONFIG,
+    ...config
   }
 }
 
@@ -42,6 +60,14 @@ function agentRespondedAfterUserInput(ctx: AttentionContext): boolean {
     ctx.lastAgentOutputAt !== null &&
     ctx.lastAgentOutputAt >= ctx.lastUserInputAt
   )
+}
+
+function inFocusCooldown(
+  ctx: AttentionContext,
+  now: number,
+  config: AttentionConfig
+): boolean {
+  return ctx.lastFocusAt !== null && now - ctx.lastFocusAt < config.focusCooldownMs
 }
 
 export function dismissAttention(ctx: AttentionContext): AttentionContext {
@@ -54,12 +80,33 @@ export function dismissAttention(ctx: AttentionContext): AttentionContext {
 export function applyAttentionEvent(
   ctx: AttentionContext,
   event: AttentionEvent,
-  now: number
+  now: number,
+  config: Partial<AttentionConfig> = {}
 ): AttentionContext {
+  const resolved = resolveConfig(config)
+
   switch (event) {
     case 'output':
+      if (ctx.state === 'needsAttention') {
+        return ctx
+      }
       if (!ctx.hasUserEngaged && ctx.state === 'idle') {
         return ctx
+      }
+      if (inFocusCooldown(ctx, now, resolved)) {
+        const typedAfterFocus =
+          ctx.lastUserInputAt !== null &&
+          ctx.lastFocusAt !== null &&
+          ctx.lastUserInputAt >= ctx.lastFocusAt
+        if (!typedAfterFocus) {
+          if (ctx.state === 'busy') {
+            return {
+              ...ctx,
+              lastOutputAt: now
+            }
+          }
+          return ctx
+        }
       }
       return {
         ...ctx,
@@ -84,8 +131,13 @@ export function applyAttentionEvent(
         responseNotified: true
       }
 
-    case 'focus':
-      return dismissAttention(ctx)
+    case 'focus': {
+      const dismissed = dismissAttention(ctx)
+      return {
+        ...dismissed,
+        lastFocusAt: now
+      }
+    }
 
     default: {
       const exhaustive: never = event
@@ -97,13 +149,17 @@ export function applyAttentionEvent(
 /**
  * Busy oturumda ajan çıktısı sustuğunda:
  * - Kullanıcı yazdıktan sonra gerçek ajan çıktısı geldiyse → needsAttention (bir kez)
+ * - Kullanıcı o terminale bakıyorsa → idle (gördü sayılır)
  * - Ajan hiç yanıt vermediyse veya bildirim zaten gösterildiyse → idle
  */
 export function evaluateAttentionTimeout(
   ctx: AttentionContext,
   now: number,
-  config: AttentionConfig = DEFAULT_ATTENTION_CONFIG
+  config: Partial<AttentionConfig> = {},
+  options: AttentionTimeoutOptions = {}
 ): AttentionContext {
+  const resolved = resolveConfig(config)
+
   if (ctx.state !== 'busy') {
     return ctx
   }
@@ -113,11 +169,19 @@ export function evaluateAttentionTimeout(
     return ctx
   }
 
-  if (now - silenceAnchor < config.busyTimeoutMs) {
+  if (now - silenceAnchor < resolved.busyTimeoutMs) {
     return ctx
   }
 
   if (agentRespondedAfterUserInput(ctx) && !ctx.responseNotified) {
+    if (options.suppressNotify) {
+      return {
+        ...ctx,
+        state: 'idle',
+        responseNotified: true
+      }
+    }
+
     return {
       ...ctx,
       state: 'needsAttention',

@@ -11,5 +11,7 @@ describe('buildTerminalEnv', () => {
     expect(env.COLORTERM).toBe('truecolor')
     expect(env.FORCE_COLOR).toBe('3')
     expect(env.CLICOLOR_FORCE).toBe('1')
+    expect(env.TERM_PROGRAM).toBe('AgentDeck')
+    expect(env.AGENTDECK).toBe('1')
   })
 })

@@ -45,18 +45,33 @@ describe('attentionMonitor', () => {
     expect(next.hasUserEngaged).toBe(false)
   })
 
-  it('bildirim gösterildikten sonra tekrar zaman aşımı needsAttention üretmez', () => {
+  it('needsAttention iken gelen çıktı rozeti söndürmez', () => {
     let ctx = createAttentionContext()
     ctx = applyAttentionEvent(ctx, 'userInput', 500)
     ctx = applyAttentionEvent(ctx, 'output', 1_000)
     ctx = evaluateAttentionTimeout(ctx, 12_000, { busyTimeoutMs: 10_000 })
     expect(ctx.state).toBe('needsAttention')
 
-    ctx = applyAttentionEvent(ctx, 'output', 13_000)
-    const next = evaluateAttentionTimeout(ctx, 24_000, { busyTimeoutMs: 10_000 })
+    const next = applyAttentionEvent(ctx, 'output', 13_000)
+
+    expect(next.state).toBe('needsAttention')
+  })
+
+  it('odaklı terminalde sezgisel zaman aşımı rozet yakmaz', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = applyAttentionEvent(ctx, 'output', 1_000)
+
+    const next = evaluateAttentionTimeout(
+      ctx,
+      12_000,
+      { busyTimeoutMs: 10_000 },
+      { suppressNotify: true }
+    )
 
     expect(next.state).toBe('idle')
-    expect(next.responseNotified).toBe(false)
+    expect(next.responseNotified).toBe(true)
+    expect(next.hasUserEngaged).toBe(true)
   })
 
   it('zaman aşımı dolmadan busy kalır', () => {
@@ -69,12 +84,15 @@ describe('attentionMonitor', () => {
     expect(next.state).toBe('busy')
   })
 
-  it('focus needsAttention durumunu temizler', () => {
+  it('focus needsAttention durumunu temizler ve soğuma zamanını yazar', () => {
     const needsAttention = applyAttentionEvent(createAttentionContext(), 'bell', 1_000)
 
     const next = applyAttentionEvent(needsAttention, 'focus', 2_000)
 
-    expect(next).toEqual(createAttentionContext())
+    expect(next).toEqual({
+      ...createAttentionContext(),
+      lastFocusAt: 2_000
+    })
   })
 
   it('focus devam eden busy oturumunu korur', () => {
@@ -87,6 +105,7 @@ describe('attentionMonitor', () => {
     expect(next.state).toBe('busy')
     expect(next.hasUserEngaged).toBe(true)
     expect(next.lastUserInputAt).toBe(500)
+    expect(next.lastFocusAt).toBe(1_500)
   })
 
   it('focus sonrası zaman aşımı değerlendirmesi idle kalır', () => {
@@ -94,6 +113,49 @@ describe('attentionMonitor', () => {
     ctx = applyAttentionEvent(ctx, 'focus', 2_000)
 
     const next = evaluateAttentionTimeout(ctx, 99_000, { busyTimeoutMs: 1_000 })
+
+    expect(next.state).toBe('idle')
+  })
+
+  it('odak soğumasında focus sonrası yazılan gerçek yanıt sayılır', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'focus', 1_000)
+    ctx = applyAttentionEvent(ctx, 'userInput', 1_100)
+    ctx = applyAttentionEvent(ctx, 'output', 1_400, { focusCooldownMs: 2_500 })
+
+    expect(ctx.state).toBe('busy')
+    expect(ctx.lastAgentOutputAt).toBe(1_400)
+    expect(ctx.lastUserInputAt).toBe(1_100)
+  })
+
+  it('odak soğuması sırasındaki çıktı sahte ajan yanıtı sayılmaz', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = applyAttentionEvent(ctx, 'output', 800)
+    ctx = applyAttentionEvent(ctx, 'focus', 1_000)
+
+    const duringCooldown = applyAttentionEvent(ctx, 'output', 1_200, {
+      focusCooldownMs: 2_500
+    })
+
+    expect(duringCooldown.state).toBe('busy')
+    expect(duringCooldown.lastAgentOutputAt).toBe(800)
+    expect(duringCooldown.lastOutputAt).toBe(1_200)
+  })
+
+  it('sekmeden dönünce odak soğuması + suppressNotify hayalet rozet üretmez', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 100)
+    ctx = applyAttentionEvent(ctx, 'output', 200)
+    ctx = applyAttentionEvent(ctx, 'focus', 10_000)
+    ctx = applyAttentionEvent(ctx, 'output', 10_100, { focusCooldownMs: 2_500 })
+
+    const next = evaluateAttentionTimeout(
+      ctx,
+      21_000,
+      { busyTimeoutMs: 10_000 },
+      { suppressNotify: true }
+    )
 
     expect(next.state).toBe('idle')
   })

@@ -120,6 +120,7 @@ export interface AgentDeckBridge {
   attachTerminal: (request: TerminalIdRequest) => Promise<{ data: string; reattach: boolean }>
   detachTerminal: (request: TerminalIdRequest) => Promise<void>
   reportTerminalFocus: (request: TerminalIdRequest) => Promise<void>
+  reportTerminalBlur: (request: TerminalIdRequest) => Promise<void>
   reportTerminalUserInput: (request: TerminalIdRequest) => Promise<void>
   resetAttentionSession: () => Promise<void>
   dismissAttentionForTerminals: (request: AttentionDismissRequest) => Promise<void>

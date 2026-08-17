@@ -52,7 +52,10 @@ export function spawnTerminal(id: string, spec: SpawnSpec): void {
       cwd: spec.cwd,
       cols: 80,
       rows: 24,
-      env: buildTerminalEnv(),
+      env: {
+        ...buildTerminalEnv(),
+        AGENTDECK_TERMINAL_ID: id
+      },
       // Windows: ConPTY — modern TUI (claude/codex/grok) için gerekli.
       ...(process.platform === 'win32' ? { useConpty: true } : {})
     })

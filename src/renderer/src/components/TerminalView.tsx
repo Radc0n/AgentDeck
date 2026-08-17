@@ -55,7 +55,7 @@ export function TerminalView({
     (state) => state.attentionByTerminalId[terminal.id] ?? 'idle'
   )
 
-  useTerminalIO(terminal.id, xterm)
+  useTerminalIO(terminal.id, xterm, active)
 
   useEffect(() => {
     const unsubSpawnError = window.agentdeck.onTerminalSpawnError((event) => {
@@ -192,11 +192,12 @@ export function TerminalView({
         return
       }
       fitAddon.fit()
+      // Boyut aynıysa ConPTY'ye WINCH gönderme — TUI tam ekran yenileyip
+      // hayalet "ajan cevap verdi" döngüsü başlatır.
       void window.agentdeck.resizeTerminal({
         terminalId: terminal.id,
         cols: instance.cols,
-        rows: instance.rows,
-        force: true
+        rows: instance.rows
       })
       instance.focus()
     })

@@ -37,6 +37,9 @@ const agentdeck: AgentDeckAPI = {
   reportTerminalFocus: (request: TerminalIdRequest): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_REPORT_FOCUS, request),
 
+  reportTerminalBlur: (request: TerminalIdRequest): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_REPORT_BLUR, request),
+
   reportTerminalUserInput: (request: TerminalIdRequest): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_REPORT_USER_INPUT, request),
 

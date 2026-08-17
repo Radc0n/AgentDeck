@@ -1,0 +1,107 @@
+export type PtyOutputKind = 'notify' | 'noise' | 'content'
+
+function isNotifyOscPayload(payload: string): boolean {
+  // ConEmu / Windows Terminal: 9;4 progress, 9;9 cwd, 9;<digit> diğer kabuk dizileri.
+  if (/^9;\d/.test(payload)) {
+    return false
+  }
+
+  if (payload === '9' || payload.startsWith('9;')) {
+    return true
+  }
+
+  if (payload === '99' || payload.startsWith('99;')) {
+    return true
+  }
+
+  return payload === '777;notify' || payload.startsWith('777;notify;')
+}
+
+function consumeOsc(data: string, start: number): { end: number; payload: string } {
+  let i = start + 2
+  while (i < data.length) {
+    const current = data.charCodeAt(i)
+    if (current === 0x07) {
+      return { end: i, payload: data.slice(start + 2, i) }
+    }
+    if (current === 0x1b && data.charCodeAt(i + 1) === 0x5c) {
+      return { end: i + 1, payload: data.slice(start + 2, i) }
+    }
+    i++
+  }
+
+  return { end: data.length - 1, payload: data.slice(start + 2) }
+}
+
+function consumeCsi(data: string, start: number): number {
+  let i = start + 2
+  while (i < data.length) {
+    const code = data.charCodeAt(i)
+    if (code >= 0x40 && code <= 0x7e) {
+      return i
+    }
+    i++
+  }
+  return data.length - 1
+}
+
+/**
+ * PTY parçasını dikkat makinesi için sınıflandırır.
+ * BEL / OSC 9-99-777 → notify; başlık/renk/progress/CSI → noise; metin → content.
+ */
+export function classifyPtyOutput(data: string): PtyOutputKind {
+  let hasNotify = false
+  let hasContent = false
+  let i = 0
+
+  while (i < data.length) {
+    const code = data.charCodeAt(i)
+
+    if (code === 0x1b && data.charCodeAt(i + 1) === 0x5d) {
+      const osc = consumeOsc(data, i)
+      if (isNotifyOscPayload(osc.payload)) {
+        hasNotify = true
+      }
+      i = osc.end + 1
+      continue
+    }
+
+    if (code === 0x1b && data.charCodeAt(i + 1) === 0x5b) {
+      i = consumeCsi(data, i) + 1
+      continue
+    }
+
+    if (code === 0x1b) {
+      i += i + 1 >= data.length ? 1 : 2
+      continue
+    }
+
+    if (code === 0x07) {
+      hasNotify = true
+      i++
+      continue
+    }
+
+    if (code === 0x09 || code === 0x0a || code === 0x0d) {
+      hasContent = true
+      i++
+      continue
+    }
+
+    if (code < 32) {
+      i++
+      continue
+    }
+
+    hasContent = true
+    i++
+  }
+
+  if (hasNotify) {
+    return 'notify'
+  }
+  if (hasContent) {
+    return 'content'
+  }
+  return 'noise'
+}
