@@ -129,9 +129,9 @@ export function ProjectTabs(): React.JSX.Element {
   const otherHasUnread = useMemo(
     () =>
       otherProjects.some((project) =>
-        projectHasUnreadAttention(project, attentionByTerminalId, activeProjectId)
+        projectHasUnreadAttention(project, attentionByTerminalId)
       ),
-    [otherProjects, attentionByTerminalId, activeProjectId]
+    [otherProjects, attentionByTerminalId]
   )
 
   useEffect(() => {
@@ -399,11 +399,7 @@ export function ProjectTabs(): React.JSX.Element {
     const isActive = project.id === activeProjectId
     const isInaccessible = inaccessibleProjectIds.has(project.id)
     const isItemDragging = draggingId === project.id
-    const hasUnread = projectHasUnreadAttention(
-      project,
-      attentionByTerminalId,
-      activeProjectId
-    )
+    const hasUnread = projectHasUnreadAttention(project, attentionByTerminalId)
 
     return (
       <div
@@ -588,8 +584,7 @@ export function ProjectTabs(): React.JSX.Element {
                     const isInaccessible = inaccessibleProjectIds.has(project.id)
                     const hasUnread = projectHasUnreadAttention(
                       project,
-                      attentionByTerminalId,
-                      activeProjectId
+                      attentionByTerminalId
                     )
                     const hasTerminals = project.terminals.length > 0
 

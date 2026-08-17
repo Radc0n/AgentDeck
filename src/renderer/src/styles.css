@@ -317,6 +317,7 @@ button:disabled {
 
 
 .project-tab-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -622,6 +623,7 @@ button:disabled {
 }
 
 .project-other__item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -766,12 +768,46 @@ button:disabled {
 }
 
 .project-tab__unread {
-  flex-shrink: 0;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 1;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #d4a574;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  background: var(--attention);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 0 7px rgba(212, 165, 116, 0.55);
+  pointer-events: none;
+  animation: project-unread-pulse 1.8s ease-in-out infinite;
+}
+
+.project-other__item .project-tab__unread {
+  top: 8px;
+  right: 8px;
+}
+
+@keyframes project-unread-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 7px rgba(212, 165, 116, 0.45);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 10px rgba(212, 165, 116, 0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-tab__unread {
+    animation: none;
+  }
 }
 
 /* ── Project context menu ─────────────────────────────────── */
