@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyPtyOutput } from './ptyOutput'
+import { classifyPtyOutput, looksLikeBlockingPrompt } from './ptyOutput'
 
 describe('classifyPtyOutput', () => {
   it('düz BEL bildirimi sayılır', () => {
@@ -32,5 +32,26 @@ describe('classifyPtyOutput', () => {
   it('görünür metin içeriktir', () => {
     expect(classifyPtyOutput('ajan cevabı')).toBe('content')
     expect(classifyPtyOutput('\x1b[2mthinking\x1b[0m')).toBe('content')
+  })
+
+  it('Grok seçmeli soru kartı bildirimi sayılır', () => {
+    expect(looksLikeBlockingPrompt('z (o) Type your answer here')).toBe(true)
+    expect(
+      classifyPtyOutput('1 (o) Kısa tek satır\r\nz (o) Type your answer here')
+    ).toBe('notify')
+    expect(classifyPtyOutput('↑/↓ navigate · y copy')).toBe('notify')
+  })
+
+  it('onay kartı da bildirimi sayılır', () => {
+    expect(classifyPtyOutput('Always allow on all sessions')).toBe('notify')
+  })
+
+  it('sıradan metindeki navigate/copy bildirim değildir', () => {
+    expect(looksLikeBlockingPrompt('please navigate the repo then copy files')).toBe(
+      false
+    )
+    expect(classifyPtyOutput('please navigate the repo then copy files')).toBe(
+      'content'
+    )
   })
 })

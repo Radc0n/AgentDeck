@@ -135,11 +135,7 @@ export function applyAttentionEvent(
       }
 
     case 'bell':
-      return {
-        ...ctx,
-        state: 'needsAttention',
-        responseNotified: true
-      }
+      return applyCliNotify(ctx).context
 
     case 'focus': {
       const dismissed = dismissAttention(ctx)
@@ -199,5 +195,57 @@ export function evaluateAttentionTimeout(
     }
   }
 
-  return createAttentionContext()
+  // Ajan henüz yanıt vermedi — idle ol ama "kullanıcı sordu"yu unutma;
+  // geç gelen OSC/BEL veya ilk token yok sayılmasın.
+  return {
+    ...ctx,
+    state: 'idle'
+  }
+}
+
+/** Odaklı terminalde rozet yok ama cevap bitti — o terminalin bell'i çalsın. */
+export function isFocusedCompletion(
+  previous: AttentionContext,
+  next: AttentionContext
+): boolean {
+  return (
+    previous.state === 'busy' &&
+    next.state === 'idle' &&
+    next.responseNotified &&
+    !previous.responseNotified
+  )
+}
+
+/**
+ * CLI BEL / OSC notify (Grok 777, OSC 9/99).
+ * Kullanıcı sormadan veya bu tur zaten çaldıysa sessiz.
+ * Bakıyorsa rozet yok, yine de terminal bell çalar.
+ */
+export function applyCliNotify(
+  ctx: AttentionContext,
+  options: AttentionTimeoutOptions = {}
+): { context: AttentionContext; ring: boolean } {
+  if (!ctx.hasUserEngaged || ctx.responseNotified) {
+    return { context: ctx, ring: false }
+  }
+
+  if (options.suppressNotify) {
+    return {
+      context: {
+        ...ctx,
+        state: 'idle',
+        responseNotified: true
+      },
+      ring: true
+    }
+  }
+
+  return {
+    context: {
+      ...ctx,
+      state: 'needsAttention',
+      responseNotified: true
+    },
+    ring: true
+  }
 }

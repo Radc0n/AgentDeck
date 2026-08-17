@@ -1,17 +1,47 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyAttentionEvent,
+  applyCliNotify,
   createAttentionContext,
-  evaluateAttentionTimeout
+  evaluateAttentionTimeout,
+  isFocusedCompletion
 } from './attentionMonitor'
 
 describe('attentionMonitor', () => {
-  it('bell olayı needsAttention durumuna geçirir', () => {
+  it('kullanıcı etkileşimi olmadan bell yok sayılır', () => {
     const ctx = createAttentionContext()
 
     const next = applyAttentionEvent(ctx, 'bell', 1_000)
 
+    expect(next).toEqual(ctx)
+    expect(next.state).toBe('idle')
+  })
+
+  it('kullanıcı yazdıktan sonra bell needsAttention durumuna geçirir', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+
+    const next = applyAttentionEvent(ctx, 'bell', 1_000)
+
     expect(next.state).toBe('needsAttention')
+    expect(next.responseNotified).toBe(true)
+  })
+
+  it('bu tur zaten bildirildiyse bell tekrar yakmaz', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = applyAttentionEvent(ctx, 'output', 1_000)
+    ctx = evaluateAttentionTimeout(
+      ctx,
+      12_000,
+      { busyTimeoutMs: 10_000 },
+      { suppressNotify: true }
+    )
+    expect(ctx.responseNotified).toBe(true)
+
+    const next = applyAttentionEvent(ctx, 'bell', 13_000)
+
+    expect(next.state).toBe('idle')
     expect(next.responseNotified).toBe(true)
   })
 
@@ -33,6 +63,7 @@ describe('attentionMonitor', () => {
 
     expect(next.state).toBe('needsAttention')
     expect(next.responseNotified).toBe(true)
+    expect(isFocusedCompletion(ctx, next)).toBe(false)
   })
 
   it('kullanıcı yazdı ama ajan yanıt vermediyse zaman aşımı idle döner', () => {
@@ -42,7 +73,24 @@ describe('attentionMonitor', () => {
     const next = evaluateAttentionTimeout(ctx, 12_000, { busyTimeoutMs: 10_000 })
 
     expect(next.state).toBe('idle')
-    expect(next.hasUserEngaged).toBe(false)
+    expect(next.hasUserEngaged).toBe(true)
+    expect(next.lastUserInputAt).toBe(500)
+    expect(isFocusedCompletion(ctx, next)).toBe(false)
+  })
+
+  it('ajan geç yanıt verirse ilk token ve sonraki bell hâlâ sayılır', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = evaluateAttentionTimeout(ctx, 12_000, { busyTimeoutMs: 10_000 })
+    expect(ctx.state).toBe('idle')
+    expect(ctx.hasUserEngaged).toBe(true)
+
+    ctx = applyAttentionEvent(ctx, 'output', 13_000)
+    expect(ctx.state).toBe('busy')
+    expect(ctx.lastAgentOutputAt).toBe(13_000)
+
+    const notified = applyAttentionEvent(ctx, 'bell', 13_100)
+    expect(notified.state).toBe('needsAttention')
   })
 
   it('needsAttention iken gelen çıktı rozeti söndürmez', () => {
@@ -72,6 +120,7 @@ describe('attentionMonitor', () => {
     expect(next.state).toBe('idle')
     expect(next.responseNotified).toBe(true)
     expect(next.hasUserEngaged).toBe(true)
+    expect(isFocusedCompletion(ctx, next)).toBe(true)
   })
 
   it('zaman aşımı dolmadan busy kalır', () => {
@@ -84,8 +133,28 @@ describe('attentionMonitor', () => {
     expect(next.state).toBe('busy')
   })
 
+  it('odaklı CLI notify rozet yakmaz ama bell çalar', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+
+    const { context, ring } = applyCliNotify(ctx, { suppressNotify: true })
+
+    expect(ring).toBe(true)
+    expect(context.state).toBe('idle')
+    expect(context.responseNotified).toBe(true)
+  })
+
+  it('oturum açılış notify bell çalmaz', () => {
+    const { context, ring } = applyCliNotify(createAttentionContext())
+
+    expect(ring).toBe(false)
+    expect(context.state).toBe('idle')
+  })
+
   it('focus needsAttention durumunu temizler ve soğuma zamanını yazar', () => {
-    const needsAttention = applyAttentionEvent(createAttentionContext(), 'bell', 1_000)
+    let needsAttention = createAttentionContext()
+    needsAttention = applyAttentionEvent(needsAttention, 'userInput', 400)
+    needsAttention = applyAttentionEvent(needsAttention, 'bell', 1_000)
 
     const next = applyAttentionEvent(needsAttention, 'focus', 2_000)
 
@@ -109,7 +178,9 @@ describe('attentionMonitor', () => {
   })
 
   it('focus sonrası zaman aşımı değerlendirmesi idle kalır', () => {
-    let ctx = applyAttentionEvent(createAttentionContext(), 'bell', 1_000)
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 400)
+    ctx = applyAttentionEvent(ctx, 'bell', 1_000)
     ctx = applyAttentionEvent(ctx, 'focus', 2_000)
 
     const next = evaluateAttentionTimeout(ctx, 99_000, { busyTimeoutMs: 1_000 })

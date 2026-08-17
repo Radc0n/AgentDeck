@@ -6,6 +6,7 @@ import {
   type AttentionDismissRequest,
   type CreateTerminalRequest,
   type CreateTerminalResult,
+  type TerminalBellEvent,
   type TerminalDataEvent,
   type TerminalExitEvent,
   type TerminalIdRequest,
@@ -95,6 +96,16 @@ const agentdeck: AgentDeckAPI = {
     ipcRenderer.on(IPC_CHANNELS.TERMINAL_SPAWN_ERROR, listener)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_SPAWN_ERROR, listener)
+    }
+  },
+
+  onTerminalBell: (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: TerminalBellEvent): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IPC_CHANNELS.TERMINAL_BELL, listener)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_BELL, listener)
     }
   },
 

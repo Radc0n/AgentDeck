@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
   TERMINAL_DETACH: 'agentdeck:terminal:detach',
   TERMINAL_EXIT: 'agentdeck:terminal:exit',
   TERMINAL_SPAWN_ERROR: 'agentdeck:terminal:spawnError',
+  TERMINAL_BELL: 'agentdeck:terminal:bell',
   ATTENTION_CHANGED: 'agentdeck:attention:changed',
   ATTENTION_RESET_SESSION: 'agentdeck:attention:resetSession',
   ATTENTION_DISMISS_TERMINALS: 'agentdeck:attention:dismissTerminals',
@@ -72,6 +73,10 @@ export interface AttentionChangedEvent {
   state: AttentionState
 }
 
+export interface TerminalBellEvent {
+  terminalId: string
+}
+
 export interface TerminalSpawnErrorEvent {
   terminalId: string
   message: string
@@ -124,5 +129,6 @@ export interface AgentDeckAPI {
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe
+  onTerminalBell: (callback: (event: TerminalBellEvent) => void) => Unsubscribe
   onAttentionChanged: (callback: (event: AttentionChangedEvent) => void) => Unsubscribe
 }

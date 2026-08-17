@@ -59,10 +59,38 @@ function consumeCsi(data: string, start: number): number {
 }
 
 /**
+ * Grok seçmeli soru / onay kartı turu bitirmez, BEL de göndermez.
+ * Kart chrome'u görünür metin — 3 sn sessizlik yedeği TUI çiziminden asla dolmaz.
+ */
+export function looksLikeBlockingPrompt(data: string): boolean {
+  if (data.includes('Type your answer here')) {
+    return true
+  }
+  if (data.includes('Always allow on all sessions')) {
+    return true
+  }
+
+  const navigateAt = data.indexOf('navigate')
+  if (navigateAt !== -1) {
+    // "↑/↓ navigate · y copy" — uzun proza sığmasın.
+    const nearby = data.slice(navigateAt, navigateAt + 20)
+    if (nearby.includes('copy')) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
  * PTY parçasını dikkat makinesi için sınıflandırır.
- * BEL / OSC 9-99-777 → notify; metin → content; başlık/progress → activity; CSI/renk → noise.
+ * BEL / OSC 9-99-777 / seçmeli kart → notify; metin → content; başlık/progress → activity; CSI/renk → noise.
  */
 export function classifyPtyOutput(data: string): PtyOutputKind {
+  if (looksLikeBlockingPrompt(data)) {
+    return 'notify'
+  }
+
   let hasNotify = false
   let hasContent = false
   let hasActivity = false

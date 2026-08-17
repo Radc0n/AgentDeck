@@ -17,6 +17,7 @@ import {
   type ClipboardReadResult,
   type CreateTerminalRequest,
   type CreateTerminalResult,
+  type TerminalBellEvent,
   type TerminalDataEvent,
   type TerminalExitEvent,
   type TerminalSpawnErrorEvent
@@ -24,9 +25,11 @@ import {
 import type { TerminalProfile, Workspace } from '../shared/types'
 import {
   applyAttentionEvent,
+  applyCliNotify,
   createAttentionContext,
   dismissAttention,
   evaluateAttentionTimeout,
+  isFocusedCompletion,
   type AttentionContext,
   type AttentionEvent
 } from './attentionMonitor'
@@ -43,6 +46,8 @@ import {
   validateTerminalWriteRequest,
   validateWorkspace
 } from './ipcValidation'
+import { playAttentionSound } from './attentionSound'
+import { ensureGrokNotificationConfig } from './grokNotifications'
 import { resolveProfile } from './profiles'
 import * as ptyManager from './ptyManager'
 import { loadWorkspace, saveWorkspace } from './sessionStore'
@@ -57,6 +62,8 @@ const terminalProfiles = new Map<string, TerminalProfile>()
 // kadar aynı terminal için tekrar bildirim göstermeyiz — bell akışı (\x07) sık geldiğinde
 // oluşan spam'i önler.
 const notifiedTerminals = new Set<string>()
+const lastCompletionSoundAt = new Map<string, number>()
+const COMPLETION_SOUND_GAP_MS = 1_500
 const attachedTerminals = new Set<string>()
 let focusedTerminalId: string | null = null
 const pendingReattachTerminals = new Set<string>()
@@ -154,7 +161,7 @@ function maybeNotifyAttention(terminalId: string): void {
   const notification = new Notification({
     title: 'AgentDeck',
     body: 'Bir terminal dikkatinizi bekliyor.',
-    silent: false
+    silent: true
   })
   notification.show()
 }
@@ -192,11 +199,35 @@ function updateAttentionState(
   if (!previous || previous.state !== next.state) {
     emitAttentionChanged({ terminalId, state: next.state })
 
-    // OS toast pencere arkadayken; in-app ses renderer'da. Kaynak bell veya sezgi olabilir.
     if (next.state === 'needsAttention' && options.notify !== false) {
       maybeNotifyAttention(terminalId)
     }
   }
+}
+
+/** Bu terminalin xterm'ine BEL yazdır — ses CLI/terminal bell'inden gelir. */
+function ringTerminal(terminalId: string): void {
+  const payload: TerminalBellEvent = { terminalId }
+  sendToRenderer(IPC_CHANNELS.TERMINAL_BELL, payload)
+}
+
+/**
+ * Tamamlanma sesi. Grok kancası AgentDeck PTY içinde sessiz kalıyor;
+ * Windows'ta main process çalar (aynı sistem sesi).
+ */
+function playCompletionSound(terminalId: string): void {
+  const now = Date.now()
+  const previous = lastCompletionSoundAt.get(terminalId) ?? 0
+  if (now - previous < COMPLETION_SOUND_GAP_MS) {
+    return
+  }
+  lastCompletionSoundAt.set(terminalId, now)
+
+  if (process.platform === 'win32') {
+    playAttentionSound()
+    return
+  }
+  ringTerminal(terminalId)
 }
 
 function appendTerminalOutput(terminalId: string, data: string): void {
@@ -241,7 +272,15 @@ function ensurePtyCallbacks(): void {
 
     const kind = classifyPtyOutput(data)
     if (kind === 'notify' && isAgentTerminal(terminalId)) {
-      handleAttentionEvent(terminalId, 'bell')
+      const current = attentionByTerminal.get(terminalId) ?? createAttentionContext()
+      const looking = focusedTerminalId === terminalId && isWindowFocused()
+      const { context: next, ring } = applyCliNotify(current, {
+        suppressNotify: looking
+      })
+      updateAttentionState(terminalId, next)
+      if (ring) {
+        playCompletionSound(terminalId)
+      }
     } else if (kind === 'content') {
       handleAttentionEvent(terminalId, 'output')
     } else if (kind === 'activity') {
@@ -253,6 +292,7 @@ function ensurePtyCallbacks(): void {
     attentionByTerminal.delete(terminalId)
     terminalProfiles.delete(terminalId)
     notifiedTerminals.delete(terminalId)
+    lastCompletionSoundAt.delete(terminalId)
     if (focusedTerminalId === terminalId) {
       focusedTerminalId = null
     }
@@ -283,7 +323,13 @@ function startAttentionPolling(): void {
       const suppressNotify = focusedTerminalId === terminalId && isWindowFocused()
       const next = evaluateAttentionTimeout(context, now, {}, { suppressNotify })
       if (next.state !== context.state) {
+        const shouldRing =
+          isFocusedCompletion(context, next) ||
+          (next.state === 'needsAttention' && context.state !== 'needsAttention')
         updateAttentionState(terminalId, next)
+        if (shouldRing) {
+          playCompletionSound(terminalId)
+        }
       } else {
         attentionByTerminal.set(terminalId, next)
       }
@@ -299,6 +345,14 @@ function toErrorMessage(error: unknown, fallback: string): string {
 }
 
 function spawnTerminalFromRequest(request: CreateTerminalRequest): void {
+  if (request.profile === 'grok') {
+    try {
+      ensureGrokNotificationConfig()
+    } catch {
+      // Grok config yazılamazsa PTY yine açılsın.
+    }
+  }
+
   const spec = resolveProfile(request.profile, {
     cwd: request.cwd,
     command: request.command

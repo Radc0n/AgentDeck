@@ -1,7 +1,8 @@
 import type { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
+import { playAttentionSound } from '../attentionSound'
 import { sniffModes } from '../terminalDebug'
-import { isEngagingUserInput } from '../terminalInput'
+import { isTurnStartingInput } from '../terminalInput'
 
 export function useTerminalIO(
   terminalId: string,
@@ -88,6 +89,14 @@ export function useTerminalIO(
       })
     })
 
+    const unsubBell = window.agentdeck.onTerminalBell?.((event) => {
+      if (event.terminalId !== terminalId) {
+        return
+      }
+      // Bu oturumun bell'i — xterm parse'ına bırakma (dev'de onBell kaçabiliyor).
+      playAttentionSound()
+    })
+
     const unsubExit = window.agentdeck.onTerminalExit((event) => {
       if (event.terminalId !== terminalId) {
         return
@@ -102,7 +111,7 @@ export function useTerminalIO(
 
     const dataDisposable = terminal.onData((data) => {
       void window.agentdeck.writeTerminal({ terminalId, data })
-      if (attachSettled && focusedRef.current && isEngagingUserInput(data)) {
+      if (attachSettled && focusedRef.current && isTurnStartingInput(data)) {
         void window.agentdeck.reportTerminalUserInput({ terminalId })
       }
     })
@@ -127,6 +136,7 @@ export function useTerminalIO(
       void window.agentdeck.reportTerminalBlur({ terminalId })
       void window.agentdeck.detachTerminal({ terminalId })
       unsubData()
+      unsubBell?.()
       unsubExit()
       dataDisposable.dispose()
       element?.removeEventListener('focus', reportFocus, true)

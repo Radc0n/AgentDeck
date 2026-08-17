@@ -7,13 +7,18 @@ import { registerIpcHandlers, trustRenderer } from './ipc'
 const APP_SCHEME = 'agentdeck'
 const APP_HOST = 'bundle'
 
+// Windows toast kimliği electron-builder appId ile aynı olmalı.
+app.setAppUserModelId('com.agentdeck.app')
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: APP_SCHEME,
     privileges: {
       standard: true,
       secure: true,
-      supportFetchAPI: true
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true
     }
   }
 ])
@@ -58,7 +63,18 @@ function registerApplicationProtocol(): void {
       return new Response('Not found', { status: 404 })
     }
 
-    return net.fetch(pathToFileURL(pathToServe).toString())
+    const fetched = net.fetch(pathToFileURL(pathToServe).toString())
+    if (!pathToServe.toLowerCase().endsWith('.wav')) {
+      return fetched
+    }
+
+    return fetched.then(async (response) => {
+      const buffer = await response.arrayBuffer()
+      return new Response(buffer, {
+        status: response.status,
+        headers: { 'Content-Type': 'audio/wav' }
+      })
+    })
   })
 }
 
@@ -95,8 +111,8 @@ function createWindow(): void {
       nodeIntegration: false,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      // Bildirim sesi kullanıcı jesti olmadan da çalsın (arka plan sekmesi).
-      autoplayPolicy: 'no-user-gesture-required'
+      autoplayPolicy: 'no-user-gesture-required',
+      backgroundThrottling: false
     }
   })
 

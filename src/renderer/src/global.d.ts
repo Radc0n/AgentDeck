@@ -96,6 +96,10 @@ export interface AttentionChangedEvent {
   state: AttentionState
 }
 
+export interface TerminalBellEvent {
+  terminalId: string
+}
+
 export interface TerminalSpawnErrorEvent {
   terminalId: string
   message: string
@@ -143,7 +147,13 @@ export interface AgentDeckBridge {
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe
+  onTerminalBell: (callback: (event: TerminalBellEvent) => void) => Unsubscribe
   onAttentionChanged: (callback: (event: AttentionChangedEvent) => void) => Unsubscribe
+}
+
+declare module '*.wav?url' {
+  const src: string
+  export default src
 }
 
 declare global {

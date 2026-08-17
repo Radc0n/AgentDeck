@@ -1,54 +1,65 @@
-let audioContext: AudioContext | null = null
+import attentionWav from './assets/attention.wav?url'
 
-function getAudioContext(): AudioContext {
-  audioContext ??= new AudioContext()
-  return audioContext
+let player: HTMLAudioElement | null = null
+let unlocked = false
+let playGeneration = 0
+
+function getPlayer(): HTMLAudioElement {
+  if (!player) {
+    player = new Audio(attentionWav)
+    player.preload = 'auto'
+    player.volume = 1
+  }
+  return player
 }
 
-/** Chromium jest olmadan AudioContext'i askıda bırakır; ilk tık/tuşta aç. */
+/** İlk tık/tuşta ses öğesini kilitle — sonraki play() jest gerektirmez. */
 export function unlockAttentionSound(): void {
+  if (unlocked) {
+    return
+  }
+
   try {
-    const ctx = getAudioContext()
-    if (ctx.state === 'suspended') {
-      void ctx.resume()
+    const audio = getPlayer()
+    const previous = audio.volume
+    const generation = playGeneration
+    audio.volume = 0.001
+    const play = audio.play()
+    unlocked = true
+    if (play && typeof play.then === 'function') {
+      void play
+        .then(() => {
+          if (generation !== playGeneration) {
+            return
+          }
+          audio.pause()
+          audio.currentTime = 0
+          audio.volume = previous
+        })
+        .catch(() => {
+          unlocked = false
+          audio.volume = previous
+        })
     }
   } catch {
-    // Ses yok — sessizce geç.
+    unlocked = false
   }
 }
 
-function playTones(ctx: AudioContext): void {
-  const start = ctx.currentTime
-  const gain = ctx.createGain()
-  gain.gain.setValueAtTime(0, start)
-  gain.gain.linearRampToValueAtTime(0.18, start + 0.015)
-  gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45)
-  gain.connect(ctx.destination)
-
-  const notes = [523.25, 659.25]
-  for (let i = 0; i < notes.length; i++) {
-    const osc = ctx.createOscillator()
-    osc.type = 'sine'
-    osc.frequency.value = notes[i]!
-    osc.connect(gain)
-    const noteStart = start + i * 0.1
-    osc.start(noteStart)
-    osc.stop(noteStart + 0.22)
-  }
-}
-
-/** Ajan dikkat istediğinde kısa, yumuşak iki tonlu bildirim sesi. */
-export async function playAttentionSound(): Promise<void> {
+/** Ajan dikkat istediğinde paketlenmiş WAV çalar (Web Audio / toast değil). */
+export function playAttentionSound(): void {
   try {
-    const ctx = getAudioContext()
-    if (ctx.state === 'suspended') {
-      await ctx.resume()
+    const audio = getPlayer()
+    playGeneration += 1
+    audio.volume = 1
+    audio.currentTime = 0
+    const play = audio.play()
+    if (play && typeof play.catch === 'function') {
+      void play.catch(() => {
+        unlocked = false
+        unlockAttentionSound()
+      })
     }
-    if (ctx.state !== 'running') {
-      return
-    }
-
-    playTones(ctx)
   } catch {
     // Ses devre dışı veya tarayıcı politikası — sessizce geç.
   }

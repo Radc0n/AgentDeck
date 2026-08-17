@@ -30,7 +30,23 @@ function stripProtocolPrefix(data: string): string {
   return rest
 }
 
+const NAV_ONLY =
+  /^(?:\x1b\[[ABCDHF]|\x1b\[[56]~|\x1b\[1;[23][ABCD]|\x1b\[Z|\t|\x1b)+$/
+
 /** Odak/mouse/paste işaretçisi değilse kullanıcı ajanı meşgul etmiş sayılır. */
 export function isEngagingUserInput(data: string): boolean {
   return stripProtocolPrefix(data).length > 0
+}
+
+/**
+ * Yeni tur / yeni cevap sayılacak girdi.
+ * Ok/Tab/Esc seçmeli kartta gezinmedir — responseNotified sıfırlanmasın (çift ding).
+ */
+export function isTurnStartingInput(data: string): boolean {
+  if (!isEngagingUserInput(data)) {
+    return false
+  }
+
+  const rest = stripProtocolPrefix(data)
+  return !NAV_ONLY.test(rest)
 }

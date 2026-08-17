@@ -41,6 +41,23 @@ function toSpawnErrorMessage(error: unknown): string {
   return 'Terminal başlatılamadı.'
 }
 
+/**
+ * Windows ConPTY ayarları.
+ *
+ * Paketlenmiş Electron'da `runAsNode` fuse kapalı. node-pty varsayılan kill
+ * yolu `conpty_console_list_agent`'ı `process.execPath` (AgentDeck.exe) ile
+ * fork eder; fuse yüzünden bu yeni bir AgentDeck penceresi açar.
+ * `useConptyDll` o fork'u atlar — bundled conpty.dll ile kapatır.
+ */
+export function ptyBackendOptions(
+  platform: NodeJS.Platform = process.platform
+): { useConpty: true; useConptyDll: true } | Record<string, never> {
+  if (platform !== 'win32') {
+    return {}
+  }
+  return { useConpty: true, useConptyDll: true }
+}
+
 export function spawnTerminal(id: string, spec: SpawnSpec): void {
   if (terminals.has(id)) {
     throw new Error(`Terminal zaten çalışıyor: ${id}`)
@@ -56,8 +73,7 @@ export function spawnTerminal(id: string, spec: SpawnSpec): void {
         ...buildTerminalEnv(),
         AGENTDECK_TERMINAL_ID: id
       },
-      // Windows: ConPTY — modern TUI (claude/codex/grok) için gerekli.
-      ...(process.platform === 'win32' ? { useConpty: true } : {})
+      ...ptyBackendOptions()
     })
 
     terminal.onData((data) => {

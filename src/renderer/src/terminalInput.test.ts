@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isEngagingUserInput } from './terminalInput'
+import { isEngagingUserInput, isTurnStartingInput } from './terminalInput'
 
 describe('isEngagingUserInput', () => {
   it('odak raporlarını yok sayar', () => {
@@ -31,5 +31,29 @@ describe('isEngagingUserInput', () => {
 
   it('boş girdiyi yok sayar', () => {
     expect(isEngagingUserInput('')).toBe(false)
+  })
+})
+
+describe('isTurnStartingInput', () => {
+  it('ok ve tab yeni tur sayılmaz', () => {
+    expect(isTurnStartingInput('\x1b[A')).toBe(false)
+    expect(isTurnStartingInput('\x1b[B')).toBe(false)
+    expect(isTurnStartingInput('\x1b[C')).toBe(false)
+    expect(isTurnStartingInput('\x1b[D')).toBe(false)
+    expect(isTurnStartingInput('\t')).toBe(false)
+    expect(isTurnStartingInput('\x1b[Z')).toBe(false)
+    expect(isTurnStartingInput('\x1b')).toBe(false)
+  })
+
+  it('yazı, rakam ve enter yeni tur sayılır', () => {
+    expect(isTurnStartingInput('hello')).toBe(true)
+    expect(isTurnStartingInput('1')).toBe(true)
+    expect(isTurnStartingInput('\r')).toBe(true)
+    expect(isTurnStartingInput('\x7f')).toBe(true)
+  })
+
+  it('odak ve mouse hâlâ yok sayılır', () => {
+    expect(isTurnStartingInput('\x1b[I')).toBe(false)
+    expect(isTurnStartingInput('\x1b[<0;12;8M')).toBe(false)
   })
 })
