@@ -240,6 +240,8 @@ function ensurePtyCallbacks(): void {
       handleAttentionEvent(terminalId, 'bell')
     } else if (kind === 'content') {
       handleAttentionEvent(terminalId, 'output')
+    } else if (kind === 'activity') {
+      handleAttentionEvent(terminalId, 'activity')
     }
   })
 
@@ -282,7 +284,7 @@ function startAttentionPolling(): void {
         attentionByTerminal.set(terminalId, next)
       }
     }
-  }, 1000)
+  }, 400)
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {

@@ -1,6 +1,6 @@
 export type AttentionState = 'idle' | 'busy' | 'needsAttention'
 
-export type AttentionEvent = 'output' | 'bell' | 'focus' | 'userInput'
+export type AttentionEvent = 'output' | 'activity' | 'bell' | 'focus' | 'userInput'
 
 export interface AttentionContext {
   state: AttentionState
@@ -31,7 +31,7 @@ export interface AttentionTimeoutOptions {
 }
 
 export const DEFAULT_ATTENTION_CONFIG: AttentionConfig = {
-  busyTimeoutMs: 10_000,
+  busyTimeoutMs: 3_000,
   focusCooldownMs: 2_500
 }
 
@@ -113,6 +113,16 @@ export function applyAttentionEvent(
         state: 'busy',
         lastOutputAt: now,
         lastAgentOutputAt: now
+      }
+
+    case 'activity':
+      // Başlık / progress: ajan hâlâ canlı. Yeni tur sayılmaz, sessizlik saati yenilenir.
+      if (ctx.state !== 'busy') {
+        return ctx
+      }
+      return {
+        ...ctx,
+        lastOutputAt: now
       }
 
     case 'userInput':

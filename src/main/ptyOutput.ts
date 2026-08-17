@@ -1,4 +1,17 @@
-export type PtyOutputKind = 'notify' | 'noise' | 'content'
+export type PtyOutputKind = 'notify' | 'activity' | 'content' | 'noise'
+
+function isActivityOscPayload(payload: string): boolean {
+  if (payload === '0' || payload.startsWith('0;')) {
+    return true
+  }
+  if (payload === '1' || payload.startsWith('1;')) {
+    return true
+  }
+  if (payload === '2' || payload.startsWith('2;')) {
+    return true
+  }
+  return payload.startsWith('9;4')
+}
 
 function isNotifyOscPayload(payload: string): boolean {
   // ConEmu / Windows Terminal: 9;4 progress, 9;9 cwd, 9;<digit> diğer kabuk dizileri.
@@ -47,11 +60,12 @@ function consumeCsi(data: string, start: number): number {
 
 /**
  * PTY parçasını dikkat makinesi için sınıflandırır.
- * BEL / OSC 9-99-777 → notify; başlık/renk/progress/CSI → noise; metin → content.
+ * BEL / OSC 9-99-777 → notify; metin → content; başlık/progress → activity; CSI/renk → noise.
  */
 export function classifyPtyOutput(data: string): PtyOutputKind {
   let hasNotify = false
   let hasContent = false
+  let hasActivity = false
   let i = 0
 
   while (i < data.length) {
@@ -61,6 +75,8 @@ export function classifyPtyOutput(data: string): PtyOutputKind {
       const osc = consumeOsc(data, i)
       if (isNotifyOscPayload(osc.payload)) {
         hasNotify = true
+      } else if (isActivityOscPayload(osc.payload)) {
+        hasActivity = true
       }
       i = osc.end + 1
       continue
@@ -102,6 +118,9 @@ export function classifyPtyOutput(data: string): PtyOutputKind {
   }
   if (hasContent) {
     return 'content'
+  }
+  if (hasActivity) {
+    return 'activity'
   }
   return 'noise'
 }

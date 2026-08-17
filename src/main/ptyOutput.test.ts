@@ -13,12 +13,15 @@ describe('classifyPtyOutput', () => {
     expect(classifyPtyOutput('\x1b]777;notify;Grok;Cevap hazir\x1b\\')).toBe('notify')
   })
 
-  it('OSC 9;4 progress, 9;9 cwd ve 777 precmd gürültüdür', () => {
-    expect(classifyPtyOutput('\x1b]9;4;1;40\x07')).toBe('noise')
+  it('başlık ve OSC 9;4 progress canlılık sayılır', () => {
+    expect(classifyPtyOutput('\x1b]9;4;1;40\x07')).toBe('activity')
+    expect(classifyPtyOutput('\x1b]0;✳ Grok\x07')).toBe('activity')
+    expect(classifyPtyOutput('\x1b]2;session\x07')).toBe('activity')
+  })
+
+  it('OSC 9;9 cwd, 777 precmd ve renk gürültüdür', () => {
     expect(classifyPtyOutput('\x1b]9;9;C:\\proj\x07')).toBe('noise')
     expect(classifyPtyOutput('\x1b]777;precmd\x07')).toBe('noise')
-    expect(classifyPtyOutput('\x1b]0;✳ Grok\x07')).toBe('noise')
-    expect(classifyPtyOutput('\x1b]2;session\x07')).toBe('noise')
     expect(classifyPtyOutput('\x1b]104;255\x07')).toBe('noise')
   })
 

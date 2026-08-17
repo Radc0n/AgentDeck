@@ -143,6 +143,34 @@ describe('attentionMonitor', () => {
     expect(duringCooldown.lastOutputAt).toBe(1_200)
   })
 
+  it('varsayılan 3 sn sessizlikten sonra needsAttention üretir', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = applyAttentionEvent(ctx, 'output', 1_000)
+
+    expect(evaluateAttentionTimeout(ctx, 3_500).state).toBe('busy')
+    expect(evaluateAttentionTimeout(ctx, 4_000).state).toBe('needsAttention')
+  })
+
+  it('activity sessizlik saatini yeniler ama ajan yanıtı sayılmaz', () => {
+    let ctx = createAttentionContext()
+    ctx = applyAttentionEvent(ctx, 'userInput', 500)
+    ctx = applyAttentionEvent(ctx, 'output', 1_000)
+    ctx = applyAttentionEvent(ctx, 'activity', 3_500)
+
+    expect(ctx.state).toBe('busy')
+    expect(ctx.lastOutputAt).toBe(3_500)
+    expect(ctx.lastAgentOutputAt).toBe(1_000)
+    expect(evaluateAttentionTimeout(ctx, 5_500).state).toBe('busy')
+    expect(evaluateAttentionTimeout(ctx, 6_500).state).toBe('needsAttention')
+  })
+
+  it('idle iken activity yok sayılır', () => {
+    const ctx = createAttentionContext()
+    const next = applyAttentionEvent(ctx, 'activity', 1_000)
+    expect(next).toEqual(ctx)
+  })
+
   it('sekmeden dönünce odak soğuması + suppressNotify hayalet rozet üretmez', () => {
     let ctx = createAttentionContext()
     ctx = applyAttentionEvent(ctx, 'userInput', 100)
