@@ -22,7 +22,9 @@ export const IPC_CHANNELS = {
   ATTENTION_RESET_SESSION: 'agentdeck:attention:resetSession',
   ATTENTION_DISMISS_TERMINALS: 'agentdeck:attention:dismissTerminals',
   PROJECT_CHECK_PATH: 'agentdeck:project:checkPath',
-  PROJECT_REVEAL_IN_FOLDER: 'agentdeck:project:revealInFolder'
+  PROJECT_REVEAL_IN_FOLDER: 'agentdeck:project:revealInFolder',
+  CLIPBOARD_READ: 'agentdeck:clipboard:read',
+  CLIPBOARD_WRITE: 'agentdeck:clipboard:write'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
@@ -91,6 +93,15 @@ export interface AttentionDismissRequest {
   terminalIds: string[]
 }
 
+export interface ClipboardWriteRequest {
+  text: string
+}
+
+export interface ClipboardReadResult {
+  text: string
+  hasImage: boolean
+}
+
 export interface AgentDeckAPI {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResult>
   writeTerminal: (request: TerminalWriteRequest) => Promise<void>
@@ -108,6 +119,8 @@ export interface AgentDeckAPI {
   addProject: () => Promise<AddProjectResult>
   checkProjectPath: (path: string) => Promise<boolean>
   revealProjectInFolder: (path: string) => Promise<void>
+  readClipboard: () => Promise<ClipboardReadResult>
+  writeClipboard: (request: ClipboardWriteRequest) => Promise<void>
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe

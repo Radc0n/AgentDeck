@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   validateAttentionDismissRequest,
+  validateClipboardWriteRequest,
   validateCreateTerminalRequest,
   validateTerminalResizeRequest,
   validateTerminalWriteRequest,
@@ -42,6 +43,15 @@ describe('IPC validation', () => {
     expect(
       validateAttentionDismissRequest({ terminalIds: ['term-1', 'term-1', 'term-2'] })
     ).toEqual({ terminalIds: ['term-1', 'term-2'] })
+  })
+
+  it('boş pano metnini kabul eder, null baytı ve aşırı uzun metni reddeder', () => {
+    expect(validateClipboardWriteRequest({ text: '' })).toEqual({ text: '' })
+    expect(validateClipboardWriteRequest({ text: 'kopya' })).toEqual({ text: 'kopya' })
+    expect(() => validateClipboardWriteRequest({ text: 'a\0b' })).toThrow('Pano metni geçersiz.')
+    expect(() => validateClipboardWriteRequest({ text: 'x'.repeat(1_048_577) })).toThrow(
+      'Pano metni geçersiz.'
+    )
   })
 
   it('temel çalışma alanı şeklini doğrular', () => {

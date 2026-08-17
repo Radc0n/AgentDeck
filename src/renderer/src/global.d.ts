@@ -112,6 +112,15 @@ export interface AttentionDismissRequest {
   terminalIds: string[]
 }
 
+export interface ClipboardWriteRequest {
+  text: string
+}
+
+export interface ClipboardReadResult {
+  text: string
+  hasImage: boolean
+}
+
 export interface AgentDeckBridge {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResult>
   writeTerminal: (request: TerminalWriteRequest) => Promise<void>
@@ -129,6 +138,8 @@ export interface AgentDeckBridge {
   addProject: () => Promise<AddProjectResult>
   checkProjectPath: (path: string) => Promise<boolean>
   revealProjectInFolder: (path: string) => Promise<void>
+  readClipboard: () => Promise<ClipboardReadResult>
+  writeClipboard: (request: ClipboardWriteRequest) => Promise<void>
   onTerminalData: (callback: (event: TerminalDataEvent) => void) => Unsubscribe
   onTerminalExit: (callback: (event: TerminalExitEvent) => void) => Unsubscribe
   onTerminalSpawnError: (callback: (event: TerminalSpawnErrorEvent) => void) => Unsubscribe

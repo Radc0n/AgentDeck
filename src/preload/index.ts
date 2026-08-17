@@ -11,7 +11,8 @@ import {
   type TerminalIdRequest,
   type TerminalResizeRequest,
   type TerminalSpawnErrorEvent,
-  type TerminalWriteRequest
+  type TerminalWriteRequest,
+  type ClipboardWriteRequest
 } from '../shared/ipc'
 import type { Workspace } from '../shared/types'
 
@@ -61,6 +62,11 @@ const agentdeck: AgentDeckAPI = {
 
   revealProjectInFolder: (path: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.PROJECT_REVEAL_IN_FOLDER, path),
+
+  readClipboard: () => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_READ),
+
+  writeClipboard: (request: ClipboardWriteRequest): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_WRITE, request),
 
   onTerminalData: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: TerminalDataEvent): void => {
