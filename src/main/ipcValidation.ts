@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'fs'
 import type {
   AttentionDismissRequest,
+  ClipboardWriteRequest,
   CreateTerminalRequest,
   TerminalIdRequest,
   TerminalResizeRequest,
@@ -22,6 +23,7 @@ const TERMINAL_PROFILES = new Set<TerminalProfile>([
 const MAX_PATH_LENGTH = 32_767
 const MAX_COMMAND_LENGTH = 16_384
 const MAX_TERMINAL_WRITE_LENGTH = 1_048_576
+export const MAX_CLIPBOARD_TEXT_LENGTH = 1_048_576
 const MAX_TERMINAL_DIMENSION = 1_000
 const MAX_ATTENTION_TERMINALS = 256
 const MAX_WORKSPACE_JSON_LENGTH = 5_000_000
@@ -190,4 +192,11 @@ export function validateWorkspace(value: unknown): Workspace {
 
 export function validateProjectPath(value: unknown, mustExist = false): string {
   return asDirectoryPath(value, mustExist)
+}
+
+export function validateClipboardWriteRequest(value: unknown): ClipboardWriteRequest {
+  const request = asRecord(value, 'Pano isteği')
+  return {
+    text: asBoundedString(request.text, 'Pano metni', MAX_CLIPBOARD_TEXT_LENGTH, true)
+  }
 }

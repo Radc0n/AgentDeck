@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Terminal, TerminalProfile } from '../global'
 import { useTerminalIO } from '../hooks/useTerminalIO'
 import { useWorkspaceStore } from '../store/workspace'
+import { installClipboardPolicy } from '../terminalClipboard'
 import { logGeometry } from '../terminalDebug'
 import { DEFAULT_XTERM_OPTIONS } from '../terminalTheme'
 import { installWheelPolicy } from '../terminalWheel'
@@ -87,6 +88,12 @@ export function TerminalView({
     instance.open(container)
     // Tekerlek: mouse-tracking açık TUI'lerde bile scrollback terminalin olsun.
     installWheelPolicy(instance)
+    // Seçince kopyala; Ctrl+V metni host panosundan yapıştır (TUI panoyu okuyamaz).
+    const disposeClipboard = installClipboardPolicy(instance, {
+      readClipboard: () => window.agentdeck.readClipboard(),
+      writeClipboard: (text) => window.agentdeck.writeClipboard({ text }),
+      writePty: (data) => window.agentdeck.writeTerminal({ terminalId: terminal.id, data })
+    })
     setXterm(instance)
 
     let fitFrame = 0
@@ -165,6 +172,7 @@ export function TerminalView({
     return () => {
       cancelAnimationFrame(fitFrame)
       resizeObserver.disconnect()
+      disposeClipboard()
       instance.element?.removeEventListener('focus', refocusSync, true)
       fitAddonRef.current = null
       xtermRef.current = null

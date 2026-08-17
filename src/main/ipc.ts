@@ -1,6 +1,7 @@
 import {
   BrowserWindow,
   Notification,
+  clipboard,
   dialog,
   ipcMain,
   shell,
@@ -13,6 +14,7 @@ import {
   type IpcChannel,
   type AddProjectResult,
   type AttentionChangedEvent,
+  type ClipboardReadResult,
   type CreateTerminalRequest,
   type CreateTerminalResult,
   type TerminalDataEvent,
@@ -31,7 +33,9 @@ import {
 import { stripRealBell } from './bellDetect'
 import { classifyPtyOutput } from './ptyOutput'
 import {
+  MAX_CLIPBOARD_TEXT_LENGTH,
   validateAttentionDismissRequest,
+  validateClipboardWriteRequest,
   validateCreateTerminalRequest,
   validateProjectPath,
   validateTerminalIdRequest,
@@ -513,4 +517,39 @@ export function registerIpcHandlers(): void {
       }
     }
   )
+
+  secureHandle(IPC_CHANNELS.CLIPBOARD_READ, (): ClipboardReadResult => {
+    let text = ''
+    try {
+      const raw = clipboard.readText()
+      text = typeof raw === 'string' ? raw : ''
+    } catch {
+      text = ''
+    }
+    if (text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
+      text = text.slice(0, MAX_CLIPBOARD_TEXT_LENGTH)
+    }
+
+    let hasImage = false
+    try {
+      hasImage = clipboard.availableFormats().some((format) => format.startsWith('image/'))
+    } catch {
+      try {
+        hasImage = !clipboard.readImage().isEmpty()
+      } catch {
+        hasImage = false
+      }
+    }
+
+    return { text, hasImage }
+  })
+
+  secureHandle(IPC_CHANNELS.CLIPBOARD_WRITE, (_event, rawRequest: unknown): void => {
+    const request = validateClipboardWriteRequest(rawRequest)
+    try {
+      clipboard.writeText(request.text)
+    } catch (error) {
+      throw new Error(toErrorMessage(error, 'Pano yazılamadı.'))
+    }
+  })
 }
