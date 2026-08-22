@@ -27,6 +27,7 @@ const PROFILE_LABELS: Record<TerminalProfile, string> = {
   cursor: 'Cursor',
   codex: 'Codex',
   antigravity: 'Antigravity',
+  opencode: 'OpenCode',
   custom: 'Özel'
 }
 

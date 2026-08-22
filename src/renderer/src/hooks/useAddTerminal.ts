@@ -8,7 +8,8 @@ export const PROFILE_OPTIONS: { profile: TerminalProfile; label: string }[] = [
   { profile: 'claude', label: 'Claude' },
   { profile: 'cursor', label: 'Cursor' },
   { profile: 'codex', label: 'Codex' },
-  { profile: 'antigravity', label: 'Antigravity' }
+  { profile: 'antigravity', label: 'Antigravity' },
+  { profile: 'opencode', label: 'OpenCode' }
 ]
 
 function nextTerminalName(profile: TerminalProfile, existing: Terminal[]): string {
@@ -19,6 +20,7 @@ function nextTerminalName(profile: TerminalProfile, existing: Terminal[]): strin
     cursor: 'Cursor',
     codex: 'Codex',
     antigravity: 'Antigravity',
+    opencode: 'OpenCode',
     custom: 'Özel'
   }
   const count = existing.filter((terminal) => terminal.profile === profile).length + 1

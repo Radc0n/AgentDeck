@@ -84,7 +84,7 @@ Durumlar: `idle` → `busy` → `needsAttention`.
 
 Sabitler: `busyTimeoutMs = 3000`, `focusCooldownMs = 2500`.
 
-`isAgentTerminal`: `grok` / `claude` / `cursor` / `codex` / `antigravity` / `custom`.
+`isAgentTerminal`: `grok` / `claude` / `cursor` / `codex` / `antigravity` / `opencode` / `custom`.
 `shell` hiç bildirim üretmez.
 
 ## Grok config (kullanıcı ev dizini)
@@ -119,20 +119,25 @@ yapamaz. Varsayılan `unfocused` AgentDeck içinde hiç `turn_complete` gönderm
 
 Birleştirme kuralları (`mergeGrokNotificationConfig`):
 
-- İşaret **ve** `$env:AGENTDECK` varsa dosya **aynen** kalır.
-- İşaret var, `AGENTDECK` yoksa işaretten **dosya sonuna kadar** yeni blokla değişir.
-- İşaret yoksa blok dosya sonuna eklenir.
+- Tam olarak bir `[ui.notifications]` kökü ve bu alt ağaçta
+  `$env:AGENTDECK` koruması varsa dosya **aynen** kalır. Grok yorum satırını
+  silerek config'i yeniden serialize etse de bu kontrol çalışır.
+- Bildirim kökü yoksa blok dosya sonuna eklenir.
+- Bildirim kökü eksik/eskiyse veya birden çok kez bulunuyorsa bütün
+  `ui.notifications` alt ağaçları tek kanonik AgentDeck bloğuna indirilir.
+- Bildirimlerden sonra gelen bağımsız TOML tabloları korunur.
 - `session_ready` **eklenmez** (açılır açılmaz ding).
 
-### Bu birleştirmenin kırılganlığı
+### Sahiplik sınırı
 
-Gerçek TOML parser değil. İşaretten sonraki her şey, kanca güncellenirken silinir.
-Grok veya kullanıcı işaretten sonra yeni bölüm yazarsa ve `AGENTDECK` satırı
-kaybolursa o kuyruk gider. İki `[ui.notifications]` tablosu da Grok parser’ına
-göre last-win veya hata olabilir.
+Birleştirme gerçek TOML parser kullanmaz; satır bazında yalnız
+`ui.notifications` tablosunu ve alt tablolarını sahiplenir. Bu yüzden AgentDeck
+bildirim ayarını onarırken kullanıcının aynı alt ağaçtaki özel hook'larını
+kanonik AgentDeck hook'u ile değiştirir. Diğer TOML tablolarına dokunmaz.
 
-Kullanıcı kendi bildirim ayarını buraya koyacaksa işareti ve `AGENTDECK`
-satırını silmeden **öncesine** yazsın; ya da birleştirmeyi gerçek TOML’a taşı.
+Kullanıcı kendi bildirim hook'unu kullanacaksa AgentDeck'in Grok bildirim
+entegrasyonu ayrıca ayarlanabilir hale getirilmelidir; aynı tabloya iki ayrı
+`[ui.notifications]` kökü yazılamaz.
 
 ## Ses
 

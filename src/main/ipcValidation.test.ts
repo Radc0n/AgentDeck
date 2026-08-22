@@ -39,6 +39,19 @@ describe('IPC validation', () => {
     ).toThrow('özel komut kabul etmiyor')
   })
 
+  it('opencode profilini kabul eder', () => {
+    expect(
+      validateCreateTerminalRequest({
+        id: 'term-1',
+        profile: 'opencode',
+        cwd: process.cwd()
+      })
+    ).toMatchObject({
+      id: 'term-1',
+      profile: 'opencode'
+    })
+  })
+
   it('dikkat terminal listesini tekilleştirir', () => {
     expect(
       validateAttentionDismissRequest({ terminalIds: ['term-1', 'term-1', 'term-2'] })

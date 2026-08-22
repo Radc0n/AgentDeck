@@ -190,4 +190,48 @@ describe('sessionStore', () => {
     expect(loaded.notesPanelOpen).toBe(false)
     expect(loaded.projects[0].notebooks).toEqual([])
   })
+
+  it('opencode terminal profilini yüklemede korur', () => {
+    const userDataDir = createTempUserDataDir()
+    tempDirs.push(userDataDir)
+
+    const filePath = getWorkspaceFilePath(userDataDir)
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        activeProjectId: 'proje-1',
+        projects: [
+          {
+            id: 'proje-1',
+            name: 'AgentDeck',
+            path: 'C:\\projeler\\agentdeck',
+            terminals: [
+              {
+                id: 'term-oc',
+                name: 'OpenCode 1',
+                profile: 'opencode',
+                cwd: 'C:\\projeler\\agentdeck',
+                order: 0
+              }
+            ],
+            savedCommands: []
+          }
+        ]
+      }),
+      'utf8'
+    )
+
+    const loaded = loadWorkspace(userDataDir)
+
+    expect(loaded.projects[0].terminals).toEqual([
+      {
+        id: 'term-oc',
+        name: 'OpenCode 1',
+        profile: 'opencode',
+        cwd: 'C:\\projeler\\agentdeck',
+        order: 0
+      }
+    ])
+  })
 })

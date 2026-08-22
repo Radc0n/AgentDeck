@@ -36,6 +36,7 @@ function normalizeProfile(value: unknown): TerminalProfile | null {
     value === 'cursor' ||
     value === 'codex' ||
     value === 'antigravity' ||
+    value === 'opencode' ||
     value === 'custom'
   ) {
     return value

@@ -6,6 +6,7 @@ export type TerminalProfile =
   | 'cursor'
   | 'codex'
   | 'antigravity'
+  | 'opencode'
   | 'custom'
 
 export interface SavedCommand {

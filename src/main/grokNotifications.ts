@@ -48,6 +48,57 @@ export function grokNotificationConfigBlock(hookCommand: string): string {
   ].join('\n')
 }
 
+interface LineSpan {
+  start: number
+  end: number
+}
+
+function tomlTablePath(line: string): string | null {
+  const match = line.match(/^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/u)
+  return match?.[1]?.trim() ?? null
+}
+
+function isNotificationsTable(path: string | null): boolean {
+  return path === 'ui.notifications' || path?.startsWith('ui.notifications.') === true
+}
+
+function notificationTableSpans(lines: string[]): LineSpan[] {
+  const spans: LineSpan[] = []
+  let line = 0
+
+  while (line < lines.length) {
+    if (!isNotificationsTable(tomlTablePath(lines[line]))) {
+      line += 1
+      continue
+    }
+
+    let start = line
+    let markerLine = start - 1
+    while (markerLine >= 0 && lines[markerLine].trim() === '') {
+      markerLine -= 1
+    }
+    if (lines[markerLine]?.trim() === GROK_NOTIFY_MARKER) {
+      start = markerLine
+    }
+
+    line += 1
+    while (line < lines.length) {
+      const path = tomlTablePath(lines[line])
+      if (path !== null && !isNotificationsTable(path)) {
+        break
+      }
+      line += 1
+    }
+    spans.push({ start, end: line })
+  }
+
+  return spans
+}
+
+function countNotificationRoots(lines: string[]): number {
+  return lines.filter((line) => tomlTablePath(line) === 'ui.notifications').length
+}
+
 /**
  * AgentDeck bilinmeyen terminal: Grok odak takibi yapamaz, varsayılan
  * condition=unfocused yüzünden turn_complete BEL/ses hiç gönderilmez.
@@ -57,18 +108,51 @@ export function mergeGrokNotificationConfig(
   existing: string,
   hookCommand: string
 ): { next: string; changed: boolean } {
-  const block = grokNotificationConfigBlock(hookCommand)
-  const markerAt = existing.indexOf(GROK_NOTIFY_MARKER)
-  if (markerAt !== -1) {
-    if (existing.includes('$env:AGENTDECK')) {
-      return { next: existing, changed: false }
-    }
-    const next = `${existing.slice(0, markerAt).replace(/\s+$/u, '')}\n\n${block}`
-    return { next, changed: true }
+  const eol = existing.includes('\r\n') ? '\r\n' : '\n'
+  const lines = existing.split(/\r?\n/u)
+  const spans = notificationTableSpans(lines)
+  const rootCount = countNotificationRoots(lines)
+  const notificationsText = spans
+    .map(({ start, end }) => lines.slice(start, end).join('\n'))
+    .join('\n')
+
+  // Grok CLI config'i yeniden serialize edip AgentDeck yorumunu silebilir. Tek
+  // bir notification kökü ve bizim hook'umuz varsa biçim farkı için yeniden
+  // yazmayız. Önce root sayısını kontrol etmek, zaten bozuk olan iki tabloyu
+  // "$env:AGENTDECK var" diye yanlışlıkla geçerli saymamızı engeller.
+  if (rootCount === 1 && notificationsText.includes('$env:AGENTDECK')) {
+    return { next: existing, changed: false }
   }
 
-  const trimmed = existing.replace(/\s+$/u, '')
-  const next = trimmed.length === 0 ? block : `${trimmed}\n\n${block}`
+  const blockLines = grokNotificationConfigBlock(hookCommand).trimEnd().split('\n')
+  const nextLines: string[] = []
+
+  if (spans.length === 0) {
+    // Yalnız kalmış eski marker'ı temizle; ardından sahip olduğumuz bloğu ekle.
+    nextLines.push(...lines.filter((line) => line.trim() !== GROK_NOTIFY_MARKER))
+    while (nextLines.at(-1)?.trim() === '') {
+      nextLines.pop()
+    }
+    if (nextLines.length > 0) {
+      nextLines.push('')
+    }
+    nextLines.push(...blockLines)
+  } else {
+    let cursor = 0
+    spans.forEach((span, index) => {
+      nextLines.push(...lines.slice(cursor, span.start))
+      if (index === 0) {
+        nextLines.push(...blockLines)
+      }
+      cursor = span.end
+    })
+    nextLines.push(...lines.slice(cursor))
+  }
+
+  while (nextLines.at(-1)?.trim() === '') {
+    nextLines.pop()
+  }
+  const next = `${nextLines.join(eol)}${eol}`
   return { next, changed: true }
 }
 

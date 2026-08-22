@@ -55,7 +55,7 @@ import { loadWorkspace, saveWorkspace } from './sessionStore'
 const trustedRendererIds = new Set<number>()
 const attentionByTerminal = new Map<string, AttentionContext>()
 // Her terminalin profili. Bildirim (needsAttention) yalnızca ajan profilli terminallere
-// (grok/claude/cursor/codex/antigravity/custom) izin verilir; düz "shell" başıboş bir bell (\x07)
+// (grok/claude/cursor/codex/antigravity/opencode/custom) izin verilir; düz "shell" başıboş bir bell (\x07)
 // gönderse bile noktayı yakmamalı.
 const terminalProfiles = new Map<string, TerminalProfile>()
 // Bildirim gösterilmiş terminaller. Kullanıcı o terminale bakana (focus/userInput)
@@ -107,6 +107,7 @@ function isAgentTerminal(terminalId: string): boolean {
     profile === 'cursor' ||
     profile === 'codex' ||
     profile === 'antigravity' ||
+    profile === 'opencode' ||
     profile === 'custom'
   )
 }

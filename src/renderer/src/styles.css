@@ -1417,6 +1417,7 @@ button:disabled {
 .terminal-view__profile--cursor,
 .terminal-view__profile--codex,
 .terminal-view__profile--antigravity,
+.terminal-view__profile--opencode,
 .terminal-view__profile--custom {
   background: rgba(255, 255, 255, 0.1);
   color: var(--primary);

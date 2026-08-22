@@ -90,6 +90,9 @@ export function resolveProfile(
       // Antigravity agent CLI — `agy` (IDE launcher `antigravity` değil)
       return runThroughShell(platform, cwd, 'agy')
 
+    case 'opencode':
+      return runThroughShell(platform, cwd, 'opencode')
+
     case 'custom': {
       // Kayıtlı komut çubuğu; menüde listelenmez.
       const command = opts.command?.trim()

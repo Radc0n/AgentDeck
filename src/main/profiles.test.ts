@@ -107,6 +107,23 @@ describe('resolveProfile', () => {
     expect(spec.cwd).toBe(cwd)
   })
 
+  it('Windows opencode profilini powershell üzerinden opencode çalıştırır', () => {
+    const spec = resolveProfile('opencode', { cwd, platform: 'win32' })
+
+    expect(spec).toEqual({
+      file: 'powershell.exe',
+      args: ['-NoLogo', '-Command', 'opencode'],
+      cwd
+    })
+  })
+
+  it('Unix opencode profilini kabuk üzerinden çalıştırır', () => {
+    const spec = resolveProfile('opencode', { cwd, platform: 'darwin' })
+
+    expect(spec.args).toEqual(['-lc', 'opencode'])
+    expect(spec.cwd).toBe(cwd)
+  })
+
   it('custom profilini verilen komutla kabuk üzerinden çözer', () => {
     const spec = resolveProfile('custom', {
       cwd,

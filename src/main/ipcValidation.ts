@@ -17,6 +17,7 @@ const TERMINAL_PROFILES = new Set<TerminalProfile>([
   'cursor',
   'codex',
   'antigravity',
+  'opencode',
   'custom'
 ])
 

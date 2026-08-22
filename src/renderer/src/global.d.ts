@@ -5,6 +5,7 @@ export type TerminalProfile =
   | 'cursor'
   | 'codex'
   | 'antigravity'
+  | 'opencode'
   | 'custom'
 
 export type AttentionState = 'idle' | 'busy' | 'needsAttention'
